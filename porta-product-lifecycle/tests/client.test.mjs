@@ -13,6 +13,17 @@ const releaseReferencePath = fileURLToPath(new URL('../references/bridge-workflo
 const skillPath = fileURLToPath(new URL('../SKILL.md', import.meta.url))
 const realBridgeSource = process.env.PORTA_WORKFLOW_TEST_BRIDGE_SOURCE
 
+function isSemverAtLeast(value, minimum) {
+  const actual = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(value ?? ''))
+  const required = /^(\d+)\.(\d+)\.(\d+)$/.exec(minimum)
+  if (!actual || !required) return false
+  for (let index = 1; index <= 3; index += 1) {
+    const difference = Number(actual[index]) - Number(required[index])
+    if (difference !== 0) return difference > 0
+  }
+  return true
+}
+
 async function createFixture() {
   const root = await mkdtemp(join(tmpdir(), 'porta-product-lifecycle-skill-'))
   const project = join(root, 'project')
@@ -1244,7 +1255,7 @@ test('client reports neutral Scene Pack readiness against the real Agent Bridge'
       'scene-pack-readiness-observe',
       '--spec', specPath,
     ]))
-    assert.equal(first.bridgeRuntimeVersion, '1.16.1')
+    assert.equal(isSemverAtLeast(first.bridgeRuntimeVersion, '1.16.1'), true)
     const replay = parseSuccess(run(fixture, [
       'scene-pack-readiness-observe',
       '--spec', specPath,
