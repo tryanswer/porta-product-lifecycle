@@ -37,6 +37,11 @@ own authorization and isolation contract.
 Each artifact is `{id, kind, path, bytes, sha256, mediaType?}`. Paths are
 normalized relative POSIX paths and may not overlap. Kinds are
 `static-directory`, `executable-file`, and `mobile-package`.
+Each profile declares exactly one matching primary artifact: Static Web uses
+one `static-directory`, local runtime uses one `executable-file`, and mobile
+uses one `mobile-package`. Other non-overlapping artifacts may remain as
+supplemental delivery inputs, but they cannot create an ambiguous primary
+materialization target.
 
 For a file artifact, `bytes` and `sha256` identify the exact regular-file bytes.
 For a directory artifact, `bytes` is the sum of regular-file bytes. Its tree
@@ -46,7 +51,8 @@ digest is SHA-256 of these UTF-8 records ordered by relative POSIX path:
 relative/path\0byte-count\0file-sha256\n
 ```
 
-Directory paths themselves, timestamps, ownership, and modes do not enter the
+The relative paths are ordered by their raw UTF-8 bytes, not the host locale or
+filesystem collation. Directory paths themselves, timestamps, ownership, and modes do not enter the
 artifact digest. Empty directories are rejected rather than silently excluded.
 Symlinks, hard-linked files, and special files are forbidden.
 
@@ -76,6 +82,19 @@ The verifier:
 7. rescans and compares the exact entry set plus directory/file identity and
    timestamps so additions or replacements during verification fail closed;
 8. returns separate descriptor digest and artifact verification receipts.
+
+Each artifact verification receipt includes the exact ordered regular-file
+manifest `{path,bytes,sha256}[]` observed under that artifact. This manifest is
+safe metadata for the next materialization Adapter; it contains no source file
+contents, credentials, commands, or filesystem-absolute paths.
+
+The verification receipt also includes exactly one
+`porta-product-materialization-candidate` derived in the same verifier call.
+It contains the complete normalized Product Package, its package digest, and
+the matching primary artifact receipt. Consumers recompute the canonical
+package digest and match the primary declaration to the receipt before any
+mutation. They must use this candidate instead of reconstructing a second
+Product Package interpretation.
 
 Limits are 256 KiB descriptor, 4,096 files, and 512 MiB package bytes. A
 successful receipt proves only the local tree observed during that bounded

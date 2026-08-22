@@ -20,7 +20,10 @@ test('canonical identity and natural-language lifecycle activation are installab
 test('planning and installation never grant mutation or WorkRun authority', async () => {
   const skill = (await readFile(skillPath, 'utf8')).replace(/\s+/g, ' ')
   assert.match(skill, /Installation\/update.*never activates this Skill, calls `begin`, or creates a WorkRun/)
-  assert.match(skill, /`package-validate` and `lifecycle-plan`.*never create a WorkRun or authorize external mutation/)
+  assert.match(
+    skill,
+    /`build-execution-plan`, `package-validate`, and `lifecycle-plan`.*never create a WorkRun or authorize external mutation/,
+  )
   assert.match(skill, /Deployment requires an explicit target/)
   assert.match(skill, /Distribution or Porta publication requires current explicit intent/)
   assert.match(skill, /Store submission, approval, rollout, and public availability are distinct receipts/)

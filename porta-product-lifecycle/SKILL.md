@@ -20,7 +20,8 @@ optional and independent. A local-only product is complete without either.
 
 - Installation/update may run the bundled atomic activation helper directly.
   It never activates this Skill, calls `begin`, or creates a WorkRun.
-- `package-validate` and `lifecycle-plan` are local, read-only commands. They
+- `build-execution-plan`, `package-validate`, and `lifecycle-plan` are local,
+  read-only commands. They
   never create a WorkRun or authorize external mutation.
 - Development intent authorizes only source and local verification work.
 - Deployment requires an explicit target or an already approved retained plan.
@@ -67,7 +68,27 @@ collaboration Skills. Check shared interfaces before adding parallel
 abstractions. Produce deterministic functional, stability, security, and
 platform evidence proportionate to the product.
 
-### 3. Materialize a Product Package
+### 3. Select build execution
+
+Read [references/build-execution-v1.md](references/build-execution-v1.md)
+completely. GitHub is an optional Adapter, never a prerequisite. Prefer, in
+order, an existing user-owned build environment, an already-authorized
+connected host, a user-owned external CI target, or an already-produced Product
+Package. All ready routes keep source authority with the user and forbid Porta
+source access.
+
+Create one exact Build Execution request and plan it locally:
+
+```text
+node <skill-directory>/scripts/porta-product-lifecycle.mjs build-execution-plan --spec <build-execution.json>
+```
+
+The command only selects an Adapter and required evidence. It never executes a
+constructor, connects to a host, starts CI, uploads an artifact, or creates a
+WorkRun. `porta-managed` is reserved and currently fails closed as unsupported;
+do not request source upload or simulate managed isolation.
+
+### 4. Materialize a Product Package
 
 Read [references/product-package-v1.md](references/product-package-v1.md)
 completely. Existing constructors such as Vite, Gradle, Xcode, Cargo, or custom
@@ -85,7 +106,7 @@ files, and checks exact byte counts and SHA-256/tree digests. A local-runtime
 command is untrusted entrypoint metadata; validation and installation never run
 it.
 
-### 4. Plan the branching lifecycle
+### 5. Plan the branching lifecycle
 
 Run `lifecycle-plan --spec <product-package.json>`. Read
 [references/lifecycle-v1.md](references/lifecycle-v1.md) completely. The plan
@@ -93,7 +114,7 @@ records required/skipped stages and adapters from declared profile, placement,
 exposure, and channels. Planning does not start services, allocate cloud
 resources, upload artifacts, submit stores, or create a WorkRun.
 
-### 5. Deploy when declared
+### 6. Deploy when declared
 
 Treat placement and exposure independently: `local-machine` permits loopback,
 private, or explicit public gateway; `remote-host` and `managed-cloud` permit
@@ -101,7 +122,7 @@ private or public. Use the matching adapter. Inspect, plan, confirm the exact
 external phase, execute, and independently read back the runtime. A deployment
 receipt never proves distribution.
 
-### 6. Distribute when declared
+### 7. Distribute when declared
 
 Use channel adapters independently: Porta Web Release, download, enterprise,
 Google Play, or App Store. Preserve separate evidence for artifact, upload,
@@ -121,7 +142,7 @@ outlive the current Agent command/session. A listener owned only by a transient
 command runner is not Ready evidence. Stop only the exact owned Preview after
 accepted candidate handoff, cancel, or failure.
 
-### 7. Operate, review, and iterate
+### 8. Operate, review, and iterate
 
 Record runtime health, availability, rollback/recovery, and feedback. A material
 change produces a new Product Package digest and new bounded lifecycle decision.

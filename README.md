@@ -14,7 +14,7 @@ start a WorkRun or authorize deployment or distribution.
 
 ## Install
 
-Use the immutable release `porta-product-lifecycle-v1.0.0`. A trusted Agent
+Use the immutable release `porta-product-lifecycle-v1.0.1`. A trusted Agent
 must resolve the annotated tag, compare its full commit SHA with Porta's
 catalog, and install the complete `porta-product-lifecycle/` subdirectory at
 user scope. Never install from a moving branch.
@@ -22,7 +22,7 @@ user scope. Never install from a moving branch.
 For manual inspection:
 
 ```bash
-git clone --branch porta-product-lifecycle-v1.0.0 --single-branch \
+git clone --branch porta-product-lifecycle-v1.0.1 --single-branch \
   https://github.com/tryanswer/porta-product-lifecycle.git
 cd porta-product-lifecycle
 git rev-parse HEAD

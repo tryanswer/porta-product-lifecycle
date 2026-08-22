@@ -149,6 +149,14 @@ export async function verifyProductPackageRoot(value, packageRoot) {
     receipts.push(receipt)
   }
 
+  const primaryKind = validated.package.profile.kind === 'static-web'
+    ? 'static-directory'
+    : validated.package.profile.kind === 'mobile' ? 'mobile-package' : 'executable-file'
+  const primaryArtifacts = receipts.filter((artifact) => artifact.kind === primaryKind)
+  if (primaryArtifacts.length !== 1) {
+    fail('invalid_artifacts', `Product Package must contain exactly one ${primaryKind} primary artifact.`)
+  }
+
   const finalEntries = await collectPackageEntries(root)
   if (entrySnapshot(finalEntries) !== entrySnapshot(entries)) {
     fail('package_tree_changed', 'Package tree changed during verification.')
@@ -156,6 +164,14 @@ export async function verifyProductPackageRoot(value, packageRoot) {
 
   return {
     artifacts: receipts,
+    materializationCandidate: {
+      package: validated.package,
+      packageDigest: validated.digest,
+      primaryArtifact: primaryArtifacts[0],
+      schemaVersion: 1,
+      type: 'porta-product-materialization-candidate',
+      version: 1,
+    },
     packageDigest: validated.digest,
     packageSchemaVersion: validated.package.schemaVersion,
     type: 'porta-product-package-verification',
@@ -171,7 +187,7 @@ function validateDescriptor(value) {
   const capabilities = value.capabilities.map((item, index) => identifier(item, `descriptor.capabilities[${index}]`))
   if (new Set(capabilities).size !== capabilities.length) fail('invalid_product_package', 'descriptor.capabilities must be unique.')
   return {
-    capabilities: [...capabilities].sort(),
+    capabilities: [...capabilities].sort(compareUtf8Text),
     summary: boundedText(value.summary, 1, 2048, 'descriptor.summary'),
   }
 }
@@ -195,7 +211,7 @@ function validateProvenance(value) {
       id: identifier(value.builder.id, 'provenance.builder.id'),
       version: patternText(value.builder.version, VERSION_PATTERN, 'provenance.builder.version'),
     },
-    skills: [...skills].sort((left, right) => left.id.localeCompare(right.id)),
+    skills: [...skills].sort((left, right) => compareUtf8Text(left.id, right.id)),
     sourceRevision: patternText(value.sourceRevision, /^[A-Za-z0-9][A-Za-z0-9._:-]{6,127}$/, 'provenance.sourceRevision'),
   }
 }
@@ -216,7 +232,7 @@ function validateValidation(value) {
     }
   })
   if (new Set(checks.map(({ id }) => id)).size !== checks.length) fail('invalid_product_package', 'validation check ids must be unique.')
-  return { checks: [...checks].sort((left, right) => left.id.localeCompare(right.id)) }
+  return { checks: [...checks].sort((left, right) => compareUtf8Text(left.id, right.id)) }
 }
 
 function validateProduct(value) {
@@ -297,6 +313,9 @@ function validateArtifacts(value, profile) {
   if (!artifacts.some((artifact) => artifact.kind === expectedPrimaryKind)) {
     fail('incompatible_artifact', `${profile.kind} requires a ${expectedPrimaryKind} artifact.`)
   }
+  if (artifacts.filter((artifact) => artifact.kind === expectedPrimaryKind).length !== 1) {
+    fail('incompatible_artifact', `${profile.kind} requires exactly one ${expectedPrimaryKind} primary artifact.`)
+  }
   rejectOverlappingArtifacts(artifacts)
   return artifacts
 }
@@ -354,6 +373,10 @@ function canonicalJson(value) {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
   if (isRecord(value)) return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`
   return JSON.stringify(value)
+}
+
+function compareUtf8Text(left, right) {
+  return Buffer.compare(Buffer.from(left), Buffer.from(right))
 }
 
 function exactRecord(value, required, optional, label) {
@@ -449,7 +472,7 @@ async function collectPackageEntries(root) {
   let totalBytes = 0
   async function visit(directory, relativeDirectory = '') {
     const children = await readdir(directory, { withFileTypes: true })
-    children.sort((left, right) => left.name.localeCompare(right.name))
+    children.sort((left, right) => compareUtf8Text(left.name, right.name))
     for (const child of children) {
       const relativePath = relativeDirectory ? `${relativeDirectory}/${child.name}` : child.name
       const absolutePath = join(directory, child.name)
@@ -478,20 +501,23 @@ async function verifyDirectoryArtifact(artifact, entries, info) {
   const ownedFiles = entries
     .filter((entry) => entry.type === 'file' && entry.relativePath.startsWith(`${artifact.path}/`))
     .map((entry) => ({ ...entry, artifactPath: entry.relativePath.slice(artifact.path.length + 1) }))
-    .sort((left, right) => left.artifactPath.localeCompare(right.artifactPath))
+    .sort((left, right) => compareUtf8Text(left.artifactPath, right.artifactPath))
   if (ownedFiles.length < 1) fail('artifact_mismatch', `Directory artifact is empty: ${artifact.path}`)
   let bytes = 0
+  const files = []
   const treeEntries = []
   for (const file of ownedFiles) {
     const contents = await readRegularFileWithoutFollowing(file.absolutePath, file.relativePath)
     bytes += contents.length
-    treeEntries.push(`${file.artifactPath}\0${contents.length}\0${createHash('sha256').update(contents).digest('hex')}\n`)
+    const sha256 = createHash('sha256').update(contents).digest('hex')
+    files.push({ bytes: contents.length, path: file.artifactPath, sha256 })
+    treeEntries.push(`${file.artifactPath}\0${contents.length}\0${sha256}\n`)
   }
   const sha256 = createHash('sha256').update(treeEntries.join('')).digest('hex')
   if (bytes !== artifact.bytes || sha256 !== artifact.sha256) {
     fail('artifact_mismatch', `Directory artifact bytes or tree digest changed: ${artifact.path}`)
   }
-  return { bytes, fileCount: ownedFiles.length, id: artifact.id, kind: artifact.kind, path: artifact.path, sha256 }
+  return { bytes, fileCount: ownedFiles.length, files, id: artifact.id, kind: artifact.kind, path: artifact.path, sha256 }
 }
 
 async function verifyFileArtifact(artifact, info) {
@@ -501,7 +527,15 @@ async function verifyFileArtifact(artifact, info) {
   if (contents.length !== artifact.bytes || sha256 !== artifact.sha256) {
     fail('artifact_mismatch', `File artifact bytes or digest changed: ${artifact.path}`)
   }
-  return { bytes: contents.length, fileCount: 1, id: artifact.id, kind: artifact.kind, path: artifact.path, sha256 }
+  return {
+    bytes: contents.length,
+    fileCount: 1,
+    files: [{ bytes: contents.length, path: artifact.path, sha256 }],
+    id: artifact.id,
+    kind: artifact.kind,
+    path: artifact.path,
+    sha256,
+  }
 }
 
 async function readRegularFileWithoutFollowing(path, label) {

@@ -20,6 +20,10 @@ import process from 'node:process'
 import { promisify } from 'node:util'
 
 import {
+  BuildExecutionValidationError,
+  readAndPlanBuildExecution,
+} from './build-execution-plan.mjs'
+import {
   ProductPackageValidationError,
   readProductPackage,
   verifyProductPackageRoot,
@@ -34,7 +38,8 @@ const MINIMUM_LEGACY_WORKFLOW_RUNTIME = '1.9.0'
 const MINIMUM_RELEASE_WORKFLOW_RUNTIME = '1.14.0'
 const MINIMUM_SCENE_PACK_READINESS_RUNTIME = '1.16.1'
 const SKILL_ID = 'porta-product-lifecycle'
-const SKILL_VERSION = '1.0.0'
+const SKILL_VERSION = '1.0.1'
+const COMPATIBLE_STATE_SKILL_VERSIONS = new Set(['1.0.0', SKILL_VERSION])
 const MAXIMUM_BRIDGE_OUTPUT_BYTES = 1024 * 1024
 const MAXIMUM_SPEC_BYTES = 1024 * 1024
 const MAXIMUM_SCENE_PACK_READINESS_SPEC_BYTES = 24 * 1024
@@ -114,6 +119,17 @@ async function main() {
     })
     return
   }
+  if (command === 'build-execution-plan') {
+    const options = parseOptions(tokens, ['spec'])
+    const plan = await readAndPlanBuildExecution(options.spec)
+    writeResult({
+      ...plan,
+      ok: true,
+      skillId: SKILL_ID,
+      skillVersion: SKILL_VERSION,
+    })
+    return
+  }
   if (command === 'package-verify') {
     const options = parseOptions(tokens, ['package-root', 'spec'])
     const descriptor = await readProductPackage(options.spec)
@@ -173,6 +189,8 @@ async function main() {
 
 function helpText() {
   return `Porta Product Lifecycle client ${SKILL_VERSION}\n\n` +
+    `Build execution plan (GitHub is optional; planning never reads source or starts a WorkRun):\n` +
+    `  porta-product-lifecycle.mjs build-execution-plan --spec <json-file>\n\n` +
     `Product Package (validation never starts a WorkRun):\n` +
     `  porta-product-lifecycle.mjs package-validate --spec <json-file>\n\n` +
     `Product Package root readback (verification never executes an entrypoint):\n` +
@@ -1436,7 +1454,7 @@ function validateState(value) {
   if (
     state.version !== CLIENT_STATE_VERSION ||
     state.skillId !== SKILL_ID ||
-    state.skillVersion !== SKILL_VERSION ||
+    !COMPATIBLE_STATE_SKILL_VERSIONS.has(state.skillVersion) ||
     !runKeyPattern.test(String(state.runKey ?? '')) ||
     !providers.has(state.provider) ||
     typeof state.cwd !== 'string' ||
@@ -1725,7 +1743,7 @@ function writeResult(value) {
 }
 
 function writeError(error) {
-  const normalized = error instanceof ProductPackageValidationError
+  const normalized = error instanceof ProductPackageValidationError || error instanceof BuildExecutionValidationError
     ? new ClientError(error.code, error.message)
     : error instanceof ClientError
     ? error

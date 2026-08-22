@@ -19,7 +19,7 @@ function sha(value) {
 }
 
 function treeDigest(files) {
-  const entries = Object.entries(files).sort(([left], [right]) => left.localeCompare(right))
+  const entries = Object.entries(files).sort(([left], [right]) => Buffer.compare(Buffer.from(left), Buffer.from(right)))
   return sha(entries.map(([path, bytes]) => `${path}\0${Buffer.byteLength(bytes)}\0${sha(bytes)}\n`).join(''))
 }
 
@@ -61,9 +61,32 @@ test('verifies actual regular-file bytes and exact static-directory tree digest'
     const receipt = await verifyProductPackageRoot(specForDirectory(value.files), value.root)
     assert.equal(receipt.artifacts[0].fileCount, 2)
     assert.equal(receipt.artifacts[0].sha256, treeDigest(value.files))
+    assert.deepEqual(receipt.artifacts[0].files.map((file) => file.path), ['assets/app.js', 'index.html'])
     assert.match(receipt.packageDigest, /^[a-f0-9]{64}$/)
+    assert.deepEqual(receipt.materializationCandidate, {
+      package: specForDirectory(value.files),
+      packageDigest: receipt.packageDigest,
+      primaryArtifact: receipt.artifacts[0],
+      schemaVersion: 1,
+      type: 'porta-product-materialization-candidate',
+      version: 1,
+    })
   } finally {
     await value.cleanup()
+  }
+})
+
+test('uses locale-independent UTF-8 byte order for non-ASCII artifact paths', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'porta-product-package-unicode-'))
+  const files = { 'z.txt': 'z', 'ä.txt': 'umlaut', '中.txt': 'han' }
+  try {
+    await mkdir(join(root, 'dist'), { recursive: true })
+    for (const [path, contents] of Object.entries(files)) await writeFile(join(root, 'dist', path), contents)
+    const receipt = await verifyProductPackageRoot(specForDirectory(files), root)
+    assert.equal(receipt.artifacts[0].sha256, treeDigest(files))
+    assert.deepEqual(receipt.artifacts[0].files.map((file) => file.path), ['z.txt', 'ä.txt', '中.txt'])
+  } finally {
+    await rm(root, { recursive: true, force: true })
   }
 })
 

@@ -18,8 +18,8 @@ test('public release identity is internally consistent', async () => {
 
   assert.match(skill, /^---\nname: porta-product-lifecycle\n/mu)
   assert.match(client, /const SKILL_ID = 'porta-product-lifecycle'/u)
-  assert.match(client, /const SKILL_VERSION = '1\.0\.0'/u)
-  assert.match(readme, /porta-product-lifecycle-v1\.0\.0/u)
+  assert.match(client, /const SKILL_VERSION = '1\.0\.1'/u)
+  assert.match(readme, /porta-product-lifecycle-v1\.0\.1/u)
   assert.match(readme, /https:\/\/github\.com\/tryanswer\/porta-product-lifecycle\.git/u)
   assert.doesNotMatch(readme, /porta-workflow-v/u)
 })

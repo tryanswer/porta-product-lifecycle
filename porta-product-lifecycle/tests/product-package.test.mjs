@@ -134,3 +134,16 @@ test('rejects absolute and traversing artifact paths, unknown fields, and mutabl
   badDigest.artifacts[0].sha256 = 'latest'
   assert.throws(() => validateProductPackage(badDigest), ProductPackageValidationError)
 })
+
+test('requires one unambiguous primary artifact for every profile', () => {
+  const value = basePackage({ kind: 'static-web', entryPath: 'index.html', spaFallback: true })
+  value.artifacts.push({
+    ...value.artifacts[0],
+    id: 'artifact_secondary',
+    path: 'secondary',
+  })
+  assert.throws(
+    () => validateProductPackage(value),
+    (error) => error instanceof ProductPackageValidationError && error.code === 'incompatible_artifact',
+  )
+})
