@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { execFile as execFileCallback } from 'node:child_process'
 import { constants as fsConstants } from 'node:fs'
 import {
+  access,
   chmod,
   lstat,
   mkdir,
@@ -15,6 +16,7 @@ import {
   stat,
   writeFile,
 } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import process from 'node:process'
 import { promisify } from 'node:util'
@@ -220,7 +222,7 @@ function helpText() {
     `  porta-product-lifecycle.mjs fail --run-key <key> --outcome <failed|unsupported> [--reason-code <code>] [--cwd <path>]\n` +
     `  porta-product-lifecycle.mjs stop --run-key <key> [--cwd <path>]\n` +
     `  porta-product-lifecycle.mjs version\n\n` +
-    `Set PORTA_BRIDGE_BIN only when Porta installed the Bridge launcher outside PATH.\n`
+    `The client discovers Porta's standard user launcher before PATH. Set PORTA_BRIDGE_BIN only for an explicit nonstandard installation.\n`
 }
 
 async function observeScenePackReadiness(tokens) {
@@ -1029,7 +1031,7 @@ async function readCapabilities(workflowProtocolVersion = LEGACY_WORKFLOW_PROTOC
 }
 
 async function runBridge(arguments_) {
-  const bridge = process.env.PORTA_BRIDGE_BIN?.trim() || 'porta-bridge'
+  const bridge = await resolveBridgeLauncher()
   try {
     const { stdout } = await execFile(bridge, arguments_, {
       encoding: 'utf8',
@@ -1047,12 +1049,32 @@ async function runBridge(arguments_) {
       )
     }
     if (error?.code === 'ENOENT') {
-      throw new ClientError('bridge_missing', 'porta-bridge is not available in PATH.')
+      throw new ClientError(
+        'bridge_missing',
+        'porta-bridge is not available at the Porta user-level installation path or in PATH.',
+      )
     }
     if (error?.killed || error?.code === 'ETIMEDOUT') {
       throw new ClientError('bridge_timeout', 'Agent Bridge command timed out; retry with the same Run and operation keys.')
     }
     throw new ClientError('bridge_failed', 'Agent Bridge command failed without a structured receipt.')
+  }
+}
+
+async function resolveBridgeLauncher() {
+  const configured = process.env.PORTA_BRIDGE_BIN?.trim()
+  if (configured) return configured
+  const managedLauncher = join(
+    homedir(),
+    '.porta',
+    'bin',
+    process.platform === 'win32' ? 'porta-bridge.cmd' : 'porta-bridge',
+  )
+  try {
+    await access(managedLauncher, process.platform === 'win32' ? fsConstants.F_OK : fsConstants.X_OK)
+    return managedLauncher
+  } catch {
+    return 'porta-bridge'
   }
 }
 

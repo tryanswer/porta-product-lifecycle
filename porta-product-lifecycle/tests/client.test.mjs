@@ -328,6 +328,34 @@ function runAsync(fixture, args) {
   })
 }
 
+test('client discovers the Porta-managed Bridge launcher outside PATH', async () => {
+  const fixture = await createFixture()
+  try {
+    const isolatedHome = join(dirname(fixture.project), 'isolated-home')
+    const managedBin = join(isolatedHome, '.porta', 'bin')
+    const managedBridge = join(managedBin, 'porta-bridge')
+    await mkdir(managedBin, { recursive: true })
+    await writeFile(managedBridge, await readFile(fixture.bridge))
+    await chmod(managedBridge, 0o700)
+
+    const result = spawnSync(process.execPath, [clientPath, 'capabilities'], {
+      cwd: fixture.project,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        HOME: isolatedHome,
+        PATH: `${dirname(process.execPath)}:/usr/bin:/bin`,
+        ...fixture.environment,
+      },
+    })
+
+    assert.equal(result.status, 0, result.stderr)
+    assert.equal(parseSuccess(result).capabilities.runtimeVersion, fixture.environment.FAKE_RUNTIME_VERSION)
+  } finally {
+    await fixture.cleanup()
+  }
+})
+
 function runBridgeDirect(fixture, args) {
   return spawnSync(fixture.bridge, args, {
     cwd: fixture.project,
