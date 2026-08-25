@@ -38,10 +38,46 @@ fs.appendFileSync(process.env.FAKE_BRIDGE_LOG, JSON.stringify(args) + '\\n')
 const optionFrom = (tokens, name) => tokens[tokens.indexOf(name) + 1]
 const option = (name) => optionFrom(args, name)
 const command = args[1]
+const topCommand = args[0]
 const workflowVersion = option('--workflow-protocol-version') === '2' ? 2 : 1
 const requestId = '11111111-1111-4111-8111-111111111111'
 const traceId = '22222222-2222-4222-8222-222222222222'
 const workRunId = 'workrun_33333333-3333-4333-8333-333333333333'
+if (topCommand === 'status') {
+  console.log(JSON.stringify({
+    hooks: {},
+    ok: true,
+    protocolVersion: 1,
+    providers: {},
+    runtimeVersion: process.env.FAKE_RUNTIME_VERSION,
+    traceId: option('--trace-id'),
+    type: 'status'
+  }))
+  process.exit(0)
+}
+if (topCommand === 'artifact' && command === 'publish') {
+  const artifactPath = option('--path')
+  const bytes = fs.readFileSync(artifactPath)
+  console.log(JSON.stringify({
+    artifact: {
+      artifactRef: 'artifact_12345678-1234-4234-8234-123456789abc',
+      bytes: bytes.length,
+      digest: require('node:crypto').createHash('sha256').update(bytes).digest('hex'),
+      expiresAt: '2026-08-26T00:00:00.000Z',
+      fileName: path.basename(artifactPath),
+      mediaType: 'text/markdown; charset=utf-8',
+      presentationIntent: option('--intent'),
+      previewKind: 'text',
+      revision: 1
+    },
+    eventId: 'bridge:codex:artifact:event-12345678',
+    ok: true,
+    protocolVersion: 1,
+    traceId: option('--trace-id'),
+    type: 'artifact-publish'
+  }))
+  process.exit(0)
+}
 if (command === 'capabilities') {
   if (workflowVersion === 2) {
     console.log(JSON.stringify({
@@ -149,7 +185,7 @@ if (command === 'pull' && workflowVersion === 2) {
       } : {}),
       requestId,
       skillId: 'porta-product-lifecycle',
-      skillVersion: '1.0.3',
+      skillVersion: '1.0.4',
       sourceSequence: 7,
       status,
       ...(status === 'ready' ? { terminalAt: '2026-07-31T10:10:00.000Z' } : {}),
@@ -560,7 +596,7 @@ test('begin persists exact Bridge identity and replays locally without a duplica
   const fixture = await createFixture()
   try {
     const { key, result } = await beginRun(fixture)
-    assert.equal(result.receipt.skillVersion, '1.0.3')
+    assert.equal(result.receipt.skillVersion, '1.0.4')
     assert.equal(result.receipt.workRunId, 'workrun_33333333-3333-4333-8333-333333333333')
     const replay = parseSuccess(run(fixture, ['begin', '--run-key', key, '--provider', 'codex']))
     assert.equal(replay.cached, true)
@@ -608,7 +644,7 @@ test('new identity refuses legacy Skill state instead of emitting a mixed-identi
   }
 })
 
-test('1.0.3 client resumes a retained 1.0.0 run with its original Bridge identity', async () => {
+test('1.0.4 client resumes a retained 1.0.0 run with its original Bridge identity', async () => {
   const fixture = await createFixture()
   try {
     const { key, result } = await beginReleaseRun(fixture)
@@ -633,7 +669,7 @@ test('1.0.3 client resumes a retained 1.0.0 run with its original Bridge identit
   }
 })
 
-test('1.0.3 client resumes a retained 1.0.1 run with its original Bridge identity', async () => {
+test('1.0.4 client resumes a retained 1.0.1 run with its original Bridge identity', async () => {
   const fixture = await createFixture()
   try {
     const { key, result } = await beginReleaseRun(fixture)
@@ -658,7 +694,7 @@ test('1.0.3 client resumes a retained 1.0.1 run with its original Bridge identit
   }
 })
 
-test('1.0.3 client resumes a retained 1.0.2 run with its original Bridge identity', async () => {
+test('1.0.4 client resumes a retained 1.0.2 run with its original Bridge identity', async () => {
   const fixture = await createFixture()
   try {
     const { key, result } = await beginReleaseRun(fixture)
@@ -683,7 +719,28 @@ test('1.0.3 client resumes a retained 1.0.2 run with its original Bridge identit
   }
 })
 
-test('1.0.3 client refuses an invented prior version of the new identity', async () => {
+test('1.0.4 client resumes a retained 1.0.3 run with its original Bridge identity', async () => {
+  const fixture = await createFixture()
+  try {
+    const { key, result } = await beginReleaseRun(fixture)
+    const state = JSON.parse(await readFile(result.stateFile, 'utf8'))
+    delete state.receipt
+    state.skillVersion = '1.0.3'
+    await writeFile(result.stateFile, JSON.stringify(state))
+
+    const resumed = parseSuccess(run(fixture, [
+      'begin',
+      '--workflow-protocol-version', '2',
+      '--run-key', key,
+      '--provider', 'codex',
+    ]))
+    assert.equal(resumed.receipt.skillVersion, '1.0.3')
+  } finally {
+    await fixture.cleanup()
+  }
+})
+
+test('1.0.4 client refuses an invented prior version of the new identity', async () => {
   const fixture = await createFixture()
   try {
     const { key, result } = await beginReleaseRun(fixture)
@@ -856,6 +913,50 @@ test('incompatible Bridge runtime is rejected before a WorkRun begins', async ()
     assert.equal(JSON.parse(begun.stderr).code, 'workflow_incompatible')
     const calls = (await readFile(fixture.log, 'utf8')).trim().split('\n').map(JSON.parse)
     assert.equal(calls.some((call) => call[1] === 'begin'), false)
+  } finally {
+    await fixture.cleanup()
+  }
+})
+
+test('Agent Artifact Handoff publishes one request-owned file without creating a WorkRun', async () => {
+  const fixture = await createFixture()
+  try {
+    fixture.environment.FAKE_RUNTIME_VERSION = '1.17.0'
+    const requestId = 'request_12345678'
+    const artifactDirectory = join(fixture.project, '.porta', 'artifacts', requestId)
+    const artifactPath = join(artifactDirectory, 'review.md')
+    await mkdir(artifactDirectory, { recursive: true })
+    await writeFile(artifactPath, '# Review\nReady on phone.\n')
+
+    const result = parseSuccess(run(fixture, [
+      'artifact-publish',
+      '--cwd', fixture.project,
+      '--path', artifactPath,
+      '--request', requestId,
+      '--provider', 'codex',
+      '--provider-session-id', 'session_12345678',
+      '--intent', 'preview-now',
+    ]))
+    assert.equal(result.type, 'artifact-publish')
+    assert.equal(result.artifact.fileName, 'review.md')
+    assert.equal(result.artifact.presentationIntent, 'preview-now')
+    assert.equal(Object.hasOwn(result, 'remotePath'), false)
+    const calls = (await readFile(fixture.log, 'utf8')).trim().split('\n').map(JSON.parse)
+    assert.deepEqual(calls.map((call) => call[0]), ['status', 'artifact'])
+    assert.equal(calls.some((call) => call.includes('begin')), false)
+
+    const outsidePath = join(fixture.project, 'outside.md')
+    await writeFile(outsidePath, 'outside')
+    const rejected = run(fixture, [
+      'artifact-publish',
+      '--cwd', fixture.project,
+      '--path', outsidePath,
+      '--request', requestId,
+      '--provider', 'codex',
+      '--provider-session-id', 'session_12345678',
+    ])
+    assert.equal(rejected.status, 1)
+    assert.equal(JSON.parse(rejected.stderr).code, 'artifact_path_invalid')
   } finally {
     await fixture.cleanup()
   }
@@ -1062,7 +1163,7 @@ test('Workflow v2 capability preflight and begin are explicit and preserve the P
     ])
 
     const { key, result } = await beginReleaseRun(fixture)
-    assert.equal(result.receipt.skillVersion, '1.0.3')
+    assert.equal(result.receipt.skillVersion, '1.0.4')
     assert.equal(result.receipt.status, 'implementing')
     assert.equal(result.receipt.publishIntent.projectRef, 'project_fixture-1234')
     assert.equal(result.receipt.publishIntent.projectContextGeneration, 1)

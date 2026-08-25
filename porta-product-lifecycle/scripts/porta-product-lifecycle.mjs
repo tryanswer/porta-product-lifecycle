@@ -40,9 +40,10 @@ const MINIMUM_LEGACY_WORKFLOW_RUNTIME = '1.9.0'
 const MINIMUM_RELEASE_WORKFLOW_RUNTIME = '1.14.0'
 const MINIMUM_SCENE_PACK_READINESS_RUNTIME = '1.16.1'
 const MINIMUM_LOCAL_PRODUCT_RELEASE_RUNTIME = '1.16.6'
+const MINIMUM_AGENT_ARTIFACT_RUNTIME = '1.17.0'
 const SKILL_ID = 'porta-product-lifecycle'
-const SKILL_VERSION = '1.0.3'
-const COMPATIBLE_STATE_SKILL_VERSIONS = new Set(['1.0.0', '1.0.1', '1.0.2', SKILL_VERSION])
+const SKILL_VERSION = '1.0.4'
+const COMPATIBLE_STATE_SKILL_VERSIONS = new Set(['1.0.0', '1.0.1', '1.0.2', '1.0.3', SKILL_VERSION])
 const MAXIMUM_BRIDGE_OUTPUT_BYTES = 1024 * 1024
 const MAXIMUM_SPEC_BYTES = 1024 * 1024
 const MAXIMUM_SCENE_PACK_READINESS_SPEC_BYTES = 24 * 1024
@@ -108,6 +109,10 @@ async function main() {
   }
   if (command === 'scene-pack-readiness-observe') {
     await observeScenePackReadiness(tokens)
+    return
+  }
+  if (command === 'artifact-publish') {
+    await publishAgentArtifact(tokens)
     return
   }
   if (command === 'package-validate') {
@@ -213,6 +218,8 @@ function helpText() {
     `  porta-product-lifecycle.mjs local-release-status --run-key <key>\n\n` +
     `Scene Pack readiness (Agent-observed UX signal; dedupe/LKG only; no WorkRun or publish authority):\n` +
     `  porta-product-lifecycle.mjs scene-pack-readiness-observe --spec <json-file>\n\n` +
+    `Agent Artifact Handoff (local-first presentation; no WorkRun, deploy, distribution, or cloud upload):\n` +
+    `  porta-product-lifecycle.mjs artifact-publish --cwd <project-root> --path <request-owned-file> --request <id> --provider <codex|claude|gemini> --provider-session-id <id> [--turn-id <id>] [--intent <preview-now|inbox>] [--title <text>]\n\n` +
     `Workflow v2 Static HTML publication (the version selector is required):\n` +
     `  porta-product-lifecycle.mjs capabilities --workflow-protocol-version 2\n` +
     `  porta-product-lifecycle.mjs new-run-key\n` +
@@ -235,6 +242,88 @@ function helpText() {
     `  porta-product-lifecycle.mjs stop --run-key <key> [--cwd <path>]\n` +
     `  porta-product-lifecycle.mjs version\n\n` +
     `The client discovers Porta's standard user launcher before PATH. Set PORTA_BRIDGE_BIN only for an explicit nonstandard installation.\n`
+}
+
+async function publishAgentArtifact(tokens) {
+  const options = parseOptions(tokens, [
+    'cwd',
+    'intent',
+    'path',
+    'provider',
+    'provider-session-id',
+    'request',
+    'title',
+    'turn-id',
+  ])
+  const cwd = await realpath(resolve(requireBoundedText(options.cwd, 4096, 'cwd')))
+  const path = await realpath(resolve(requireBoundedText(options.path, 4096, 'path')))
+  const requestId = String(options.request ?? '')
+  if (!/^[A-Za-z0-9_-]{8,128}$/.test(requestId)) {
+    throw new ClientError('invalid_arguments', 'request must be a bounded opaque identifier.')
+  }
+  const provider = requireProvider(options.provider)
+  const providerSessionId = requireBoundedText(options['provider-session-id'], 256, 'provider session id')
+  const intent = options.intent === undefined
+    ? 'preview-now'
+    : options.intent
+  if (intent !== 'preview-now' && intent !== 'inbox') {
+    throw new ClientError('invalid_arguments', 'intent must be preview-now or inbox.')
+  }
+  const expectedRoot = join(cwd, '.porta', 'artifacts', requestId)
+  if (path === expectedRoot || !path.startsWith(`${expectedRoot}${process.platform === 'win32' ? '\\' : '/'}`)) {
+    throw new ClientError('artifact_path_invalid', 'Artifact path must stay inside the exact request-owned directory.')
+  }
+  const statusTraceId = `porta-skill-artifact-status:${randomUUID()}`
+  const status = await runBridge(['status', '--trace-id', statusTraceId, '--json'])
+  if (
+    !isRecord(status) || status.ok !== true || status.type !== 'status' ||
+    status.protocolVersion !== 1 || status.traceId !== statusTraceId ||
+    !isRuntimeAtLeast(status.runtimeVersion, MINIMUM_AGENT_ARTIFACT_RUNTIME)
+  ) {
+    throw new ClientError('workflow_incompatible', 'Agent Bridge Runtime 1.17.0 or newer is required for Agent Artifact Handoff.')
+  }
+  const traceId = `porta-skill-artifact-publish:${randomUUID()}`
+  const receipt = await runBridge([
+    'artifact', 'publish',
+    '--cwd', cwd,
+    '--path', path,
+    '--request', requestId,
+    '--provider', provider,
+    '--session', providerSessionId,
+    ...(options['turn-id'] ? ['--turn', requireBoundedText(options['turn-id'], 256, 'turn id')] : []),
+    '--intent', intent,
+    ...(options.title ? ['--title', requireBoundedText(options.title, 160, 'title')] : []),
+    '--trace-id', traceId,
+    '--json',
+  ])
+  validateAgentArtifactPublishReceipt(receipt, { intent, path, traceId })
+  writeResult(receipt)
+}
+
+function validateAgentArtifactPublishReceipt(value, { intent, path, traceId }) {
+  const receipt = requireExactRecord(value, [
+    'artifact', 'eventId', 'ok', 'protocolVersion', 'traceId', 'type',
+  ], [], 'artifact publish receipt')
+  const artifact = requireExactRecord(receipt.artifact, [
+    'artifactRef', 'bytes', 'digest', 'expiresAt', 'fileName', 'mediaType',
+    'presentationIntent', 'previewKind', 'revision',
+  ], [], 'artifact summary')
+  if (
+    receipt.ok !== true || receipt.protocolVersion !== 1 ||
+    receipt.traceId !== traceId || receipt.type !== 'artifact-publish' ||
+    typeof receipt.eventId !== 'string' || receipt.eventId.length < 8 || receipt.eventId.length > 512 ||
+    typeof artifact.artifactRef !== 'string' || !/^artifact_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(artifact.artifactRef) ||
+    !Number.isSafeInteger(artifact.bytes) || artifact.bytes < 0 || artifact.bytes > 32 * 1024 * 1024 ||
+    typeof artifact.digest !== 'string' || !/^[a-f0-9]{64}$/.test(artifact.digest) ||
+    !isIsoDateTime(artifact.expiresAt) ||
+    artifact.fileName !== path.split(/[\\/]/).at(-1) ||
+    typeof artifact.mediaType !== 'string' || artifact.mediaType.length < 1 || artifact.mediaType.length > 120 ||
+    artifact.presentationIntent !== intent ||
+    !['image', 'pdf', 'text', 'unsupported'].includes(artifact.previewKind) ||
+    artifact.revision !== 1
+  ) {
+    throw new ClientError('malformed_bridge_receipt', 'Agent Bridge returned an invalid Artifact Handoff receipt.')
+  }
 }
 
 async function registerLocalProductRelease(tokens) {

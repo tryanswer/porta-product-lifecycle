@@ -87,6 +87,14 @@ abstractions. Produce deterministic functional and platform evidence plus the
 privacy-bounded diagnostics, health signals and failure evidence proportionate
 to the product.
 
+When the user asks to send a generated image, document, report, or other file
+to the connected Porta phone, read
+[references/agent-artifact-handoff-v1.md](references/agent-artifact-handoff-v1.md)
+completely. Treat this as a presentation of development evidence, not Product
+Package materialization, deployment, Distribution, or publication. Publish
+only an exact request-owned copy; never place an absolute path or file bytes in
+a lifecycle or Inbox event.
+
 ### 3. Select build execution
 
 Use `deliver-product` or the equivalent project-mandated delivery Skill to

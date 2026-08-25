@@ -57,7 +57,7 @@ async function fixture() {
     }] },
     provenance: {
       builder: { id: 'fixture', version: '1.0.0' },
-      skills: [{ id: 'porta-product-lifecycle', version: '1.0.3' }],
+      skills: [{ id: 'porta-product-lifecycle', version: '1.0.4' }],
       sourceRevision: 'abcdef1234567890',
     },
     deploymentTarget: { placement: 'local-machine', exposure: 'loopback' },

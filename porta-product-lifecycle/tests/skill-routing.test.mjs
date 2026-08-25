@@ -6,6 +6,7 @@ const skillUrl = new URL('../SKILL.md', import.meta.url)
 const routingUrl = new URL('../references/skill-routing-v1.md', import.meta.url)
 const evalsUrl = new URL('../evals/lifecycle-routing-cases.json', import.meta.url)
 const metadataUrl = new URL('../agents/openai.yaml', import.meta.url)
+const artifactHandoffUrl = new URL('../references/agent-artifact-handoff-v1.md', import.meta.url)
 
 test('Lifecycle requires one phase routing contract before phase work begins', async () => {
   const skill = await readFile(skillUrl, 'utf8')
@@ -16,6 +17,17 @@ test('Lifecycle requires one phase routing contract before phase work begins', a
   assert.match(routing, /define -> develop\/verify -> materialize -> preview\/accept -> deploy -> distribute -> operate\/iterate/u)
   assert.match(routing, /Route every entered phase before doing phase work/u)
   assert.match(routing, /Skill Route Receipt/u)
+})
+
+test('development evidence can use privacy-bounded Agent Artifact Handoff without changing lifecycle phase', async () => {
+  const skill = await readFile(skillUrl, 'utf8')
+  const handoff = await readFile(artifactHandoffUrl, 'utf8')
+  assert.match(skill, /references\/agent-artifact-handoff-v1\.md/u)
+  assert.match(skill, /presentation of development evidence, not Product[\s\S]*deployment, Distribution, or publication/u)
+  assert.match(handoff, /\.porta\/artifacts\/<request-id>/u)
+  assert.match(handoff, /does not create a WorkRun/u)
+  assert.match(handoff, /must not contain an absolute\s+remote path or file bytes/u)
+  assert.match(handoff, /phone receipt, preview, or save[\s\S]*separate App\/device observations/u)
 })
 
 test('routing covers product discovery, engineering, delivery, distribution, and operation', async () => {
