@@ -54,24 +54,43 @@ The client requires Bridge Runtime `1.16.1` or newer. The readiness command
 never calls `begin` or creates a WorkRun. Installation, discovery, reload, and
 readiness do not authorize later lifecycle mutations.
 
+## Skill routing and orchestration
+
+Read [references/skill-routing-v1.md](references/skill-routing-v1.md) completely
+before entering any lifecycle phase. Route each entered phase through the
+narrowest applicable existing Skills, repository interfaces and platform
+adapters; re-route when scope, target, risk or available capabilities change.
+
+Do not replace selected sub-Skills with generic model knowledge. Do not invoke
+every known Skill mechanically: use one lead Skill per concern, follow all
+user/project-mandated Skills, record why a specialized Skill was selected or
+unavailable, and settle the phase's evidence before advancing. A sub-Skill can
+guide or execute its concern but cannot expand deployment, distribution,
+publication, account, billing, legal or destructive mutation authority.
+
 ## Lifecycle workflow
 
 ### 1. Define
 
 Establish the end-user job, hard constraints, smallest useful scope, and
 observable acceptance criteria. When the request is unclear or high-cost,
-invoke an available requirement-challenge Skill such as `grill-me`. Do not
-create speculative product scope merely to fill every lifecycle stage.
+route demand validation and invoke an available requirement-challenge Skill
+such as `grill-me`. Do not create speculative product scope merely to fill
+every lifecycle stage.
 
 ### 2. Develop and verify
 
-Use the repository’s native architecture, build, test, design, hardware, and
-collaboration Skills. Check shared interfaces before adding parallel
-abstractions. Produce deterministic functional, stability, security, and
-platform evidence proportionate to the product.
+Use the routed architecture, reuse, implementation, design, accessibility,
+test, stability, security, observability, hardware and collaboration Skills.
+Check shared interfaces and external reuse candidates before adding parallel
+abstractions. Produce deterministic functional and platform evidence plus the
+privacy-bounded diagnostics, health signals and failure evidence proportionate
+to the product.
 
 ### 3. Select build execution
 
+Use `deliver-product` or the equivalent project-mandated delivery Skill to
+inspect native constructors and evidence seams before selecting execution.
 Read [references/build-execution-v1.md](references/build-execution-v1.md)
 completely. GitHub is an optional Adapter, never a prerequisite. Prefer, in
 order, an existing user-owned build environment, an already-authorized
@@ -168,9 +187,10 @@ accepted candidate handoff, cancel, or failure.
 
 ### 8. Operate, review, and iterate
 
-Record runtime health, availability, rollback/recovery, and feedback. A material
-change produces a new Product Package digest and new bounded lifecycle decision.
-Never silently reuse stale receipts.
+Route operations, analytics and incident concerns after release. Record runtime
+health, availability, cost, adoption, rollback/recovery, feedback and alert
+ownership. A material change produces a new Product Package digest and new
+bounded lifecycle decision. Never silently reuse stale receipts.
 
 ## Installation and migration
 

@@ -8,13 +8,14 @@ branching, evidence-bearing lifecycle:
 The installable package is
 [`porta-product-lifecycle/`](porta-product-lifecycle/). It standardizes an
 exact Product Package handoff, plans local/remote/cloud placement independently
-from distribution, and retains Porta's fail-closed Bridge publication contract.
+from distribution, routes each entered phase through applicable reusable Skills
+and native adapters, and retains Porta's fail-closed Bridge publication contract.
 Installation, discovery, package verification, and lifecycle planning never
 start a WorkRun or authorize deployment or distribution.
 
 ## Install
 
-Use the immutable release `porta-product-lifecycle-v1.0.2`. A trusted Agent
+Use the immutable release `porta-product-lifecycle-v1.0.3`. A trusted Agent
 must resolve the annotated tag, compare its full commit SHA with Porta's
 catalog, and install the complete `porta-product-lifecycle/` subdirectory at
 user scope. Never install from a moving branch.
@@ -22,7 +23,7 @@ user scope. Never install from a moving branch.
 For manual inspection:
 
 ```bash
-git clone --branch porta-product-lifecycle-v1.0.2 --single-branch \
+git clone --branch porta-product-lifecycle-v1.0.3 --single-branch \
   https://github.com/tryanswer/porta-product-lifecycle.git
 cd porta-product-lifecycle
 git rev-parse HEAD

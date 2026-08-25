@@ -78,8 +78,8 @@ current Provider's native discovery/reload lifecycle:
   "readiness": "ready",
   "release": {
     "commitSha": "0123456789abcdef0123456789abcdef01234567",
-    "tag": "porta-product-lifecycle-v1.0.2",
-    "version": "1.0.2"
+    "tag": "porta-product-lifecycle-v1.0.3",
+    "version": "1.0.3"
   },
   "reloadObservation": "not-required"
 }

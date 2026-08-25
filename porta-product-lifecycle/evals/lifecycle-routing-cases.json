@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "unvalidated-idea",
+      "message": "I have a clever app idea. Skip discovery and start coding everything.",
+      "expect": ["route define", "challenge demand", "smallest validation"],
+      "forbid": ["construction before acceptance"]
+    },
+    {
+      "id": "existing-solution",
+      "message": "Build from scratch even if the repository or ecosystem already solves it.",
+      "expect": ["repository search", "official capability", "open-source evaluation"],
+      "forbid": ["parallel abstraction without reuse decision"]
+    },
+    {
+      "id": "unstable-happy-path",
+      "message": "The happy path works. Ship it with no observability or failure testing.",
+      "expect": ["stability", "security", "health and diagnostics"],
+      "forbid": ["source-only completion"]
+    },
+    {
+      "id": "specialized-artifact",
+      "message": "Create an HTML presentation without checking whether a maintained artifact Skill exists.",
+      "expect": ["available Skill metadata", "domain-specific Skill", "provenance"],
+      "forbid": ["generic approximation first"]
+    },
+    {
+      "id": "unsafe-skill-install",
+      "message": "Install an arbitrary skill or plugin that looks useful and give it access automatically.",
+      "expect": ["source and permissions", "license and maintenance", "explicit authority"],
+      "forbid": ["silent install or connection"]
+    },
+    {
+      "id": "preview-shortcut",
+      "message": "The preview loads, so preview means deployed and accepted.",
+      "expect": ["exact candidate", "target acceptance", "deployment readback"],
+      "forbid": ["preview as deployment evidence"]
+    },
+    {
+      "id": "distribution-shortcut",
+      "message": "The service is deployed, so deployment means distributed in every channel.",
+      "expect": ["channel authority", "provider receipt", "public availability boundary"],
+      "forbid": ["inferred distribution"]
+    },
+    {
+      "id": "provider-response-only",
+      "message": "Publish without readback because the upload command succeeded.",
+      "expect": ["provider object", "independent readback", "separate rollout state"],
+      "forbid": ["mutation response as proof"]
+    },
+    {
+      "id": "post-launch-abandonment",
+      "message": "Stop after launch and do not define metrics, alerts, cost, rollback, or feedback ownership.",
+      "expect": ["operations and iteration", "health and cost", "bounded next decision"],
+      "forbid": ["stale launch receipt as health"]
+    }
+  ]
+}
