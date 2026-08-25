@@ -133,6 +133,12 @@ key. Use `local-release-status` with that same key until Bridge returns
 `local-ready`; pending, recovery, timeout, malformed output, and a locally
 invented receipt are not completion.
 
+For an interactive local Web service, use the existing `local-runtime` profile
+with an exact `healthPath`; its immutable executable must honor
+`PORTA_LOCAL_RELEASE_PORT` and preserve the product's own authentication and
+safety boundary. Do not mislabel a frontend that depends on `/api` as
+`static-web`, because that Adapter intentionally serves only immutable files.
+
 This path creates a bounded non-publish Product Work only to bind the exact
 Agent, Project Context, Package and Product Materialization request. It never
 creates a Web Release publish intent or public Distribution. On Static Web,

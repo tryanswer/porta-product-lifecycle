@@ -39,7 +39,7 @@ const RELEASE_WORKFLOW_PROTOCOL_VERSION = 2
 const MINIMUM_LEGACY_WORKFLOW_RUNTIME = '1.9.0'
 const MINIMUM_RELEASE_WORKFLOW_RUNTIME = '1.14.0'
 const MINIMUM_SCENE_PACK_READINESS_RUNTIME = '1.16.1'
-const MINIMUM_LOCAL_PRODUCT_RELEASE_RUNTIME = '1.16.5'
+const MINIMUM_LOCAL_PRODUCT_RELEASE_RUNTIME = '1.16.6'
 const SKILL_ID = 'porta-product-lifecycle'
 const SKILL_VERSION = '1.0.1'
 const COMPATIBLE_STATE_SKILL_VERSIONS = new Set(['1.0.0', SKILL_VERSION])
@@ -258,7 +258,7 @@ async function registerLocalProductRelease(tokens) {
   await requireLocalProductReleaseCapabilities()
 
   const stateFile = await localReleaseStateFile(runKey)
-  const candidatePath = `${stateFile}.candidate.json`
+  const candidatePath = await localReleaseCandidateFile(cwd, runKey)
   const identity = {
     artifactSha256: receipt.artifacts[0].sha256,
     candidateDigest: hashJson(receipt.materializationCandidate),
@@ -273,6 +273,19 @@ async function registerLocalProductRelease(tokens) {
   let state = await readOptionalLocalReleaseState(stateFile)
   if (state) {
     requireSameLocalReleaseIdentity(state, identity)
+    if (state.candidatePath !== candidatePath && state.registrationReceipt === null) {
+      const legacyCandidatePath = `${stateFile}.candidate.json`
+      if (state.candidatePath !== legacyCandidatePath) {
+        throw new ClientError(
+          'invalid_local_release_state',
+          'Local Product Release candidate recovery path is not recognized.',
+        )
+      }
+      await writeJsonAtomic(candidatePath, receipt.materializationCandidate)
+      state = { ...state, candidatePath }
+      await writeLocalReleaseState(stateFile, state)
+      await rm(legacyCandidatePath, { force: true })
+    }
   } else {
     state = {
       ...identity,
@@ -313,6 +326,7 @@ async function registerLocalProductRelease(tokens) {
       candidatePath: state.candidatePath,
       mode: 'create-new',
       packageRoot: state.packageRoot,
+      productRef: null,
       version: 1,
     })).toString('base64url')
     const value = await runBridge([
@@ -482,6 +496,15 @@ async function localReleaseStateFile(runKey) {
   for (const directory of [porta, lifecycle, releases]) await ensureSafeDirectory(directory)
   await chmod(releases, 0o700).catch(() => undefined)
   return join(releases, `${runKey}.json`)
+}
+
+async function localReleaseCandidateFile(cwd, runKey) {
+  const porta = join(cwd, '.porta')
+  const lifecycle = join(porta, 'lifecycle-client')
+  const releases = join(lifecycle, 'local-release')
+  for (const directory of [porta, lifecycle, releases]) await ensureSafeDirectory(directory)
+  await chmod(releases, 0o700).catch(() => undefined)
+  return join(releases, `${runKey}.candidate.json`)
 }
 
 async function readOptionalLocalReleaseState(path) {

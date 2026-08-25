@@ -64,6 +64,7 @@ async function fixture() {
   }))
   await writeFile(bridge, `#!/usr/bin/env node
 const fs = require('node:fs')
+const path = require('node:path')
 const args = process.argv.slice(2)
 const option = (name) => args[args.indexOf(name) + 1]
 const command = args[1]
@@ -76,7 +77,7 @@ if (command === 'capabilities') {
       'product-materialization-status'
     ],
     eventContractVersion: 2, ok: true, platformSupported: true, protocolVersion: 1,
-    runtimeVersion: process.env.FAKE_RUNTIME_VERSION || '1.16.5', staleAfterSeconds: 900,
+    runtimeVersion: process.env.FAKE_RUNTIME_VERSION || '1.16.6', staleAfterSeconds: 900,
     traceId: option('--trace-id'), type: 'workflow-capabilities', workflowProtocolVersion: 2
   }))
   process.exit(0)
@@ -92,6 +93,11 @@ if (command === 'product-work-begin') {
 }
 if (command === 'product-materialization-register') {
   const payload = JSON.parse(Buffer.from(option('--payload'), 'base64url').toString('utf8'))
+  const projectRoot = fs.realpathSync(option('--cwd'))
+  const candidatePath = fs.realpathSync(payload.candidatePath)
+  const packageRoot = fs.realpathSync(payload.packageRoot)
+  if (!candidatePath.startsWith(projectRoot + path.sep)) process.exit(5)
+  if (candidatePath.startsWith(packageRoot + path.sep)) process.exit(6)
   const candidate = JSON.parse(fs.readFileSync(payload.candidatePath, 'utf8'))
   if (candidate.type !== 'porta-product-materialization-candidate') process.exit(3)
   if (process.env.FAKE_LOSE_REGISTRATION_ONCE === '1' && !fs.existsSync(process.env.FAKE_REGISTRATION_MARKER)) {
@@ -165,6 +171,14 @@ test('registers one verified local package through non-publish Product Work', as
     ])
     assert.equal(calls[1][calls[1].indexOf('--purpose') + 1], 'materialization')
     assert.equal(calls[2][calls[2].indexOf('--work-run-id') + 1], 'workrun_33333333-3333-4333-8333-333333333333')
+    const registrationPayload = JSON.parse(Buffer.from(
+      calls[2][calls[2].indexOf('--payload') + 1],
+      'base64url',
+    ).toString('utf8'))
+    assert.deepEqual(Object.keys(registrationPayload).sort(), [
+      'candidatePath', 'mode', 'packageRoot', 'productRef', 'version',
+    ])
+    assert.equal(registrationPayload.productRef, null)
     const statePath = receipt.stateFile
     assert.equal((await stat(statePath)).mode & 0o777, 0o600)
   } finally {

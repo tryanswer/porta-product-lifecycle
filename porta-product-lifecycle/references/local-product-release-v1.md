@@ -7,7 +7,7 @@ useful deployment input, but it is not Porta Local Product Release truth.
 
 ## Admission
 
-Bridge Runtime `1.16.5` or newer must advertise
+Bridge Runtime `1.16.6` or newer must advertise
 `porta.workflow.product-materialization.v1` and the exact non-publish Product
 Work, registration, and status operations. The client discovers the managed
 `~/.porta/bin/porta-bridge` launcher before PATH.
@@ -51,7 +51,14 @@ match the retained operation is Local Product Release completion. `pending` and
 receipt, HTTP 200, process PID, installed package, or copied Product Package is
 not a substitute for the Bridge receipt.
 
-For Static Web, the settled endpoint remains on the Host loopback interface.
+For Static Web, and for a `local-runtime` that declares an exact `healthPath`,
+the settled endpoint remains on the Host loopback interface. A browsable local
+runtime receives one Bridge-selected port through `PORTA_LOCAL_RELEASE_PORT`;
+its executable must listen directly on `127.0.0.1`, return HTTP 200 plus
+`x-content-type-options: nosniff` at the declared path, and retain all of its
+own authentication and safety gates. A local runtime without `healthPath`
+remains verifiable but has no browsable presentation.
+
 The phone must use Porta's read-only presentation flow: Bridge returns the exact
 endpoint, Porta creates an SSH local-forward, probes the forwarded URL, and
 opens ProductPreviewBrowserView. The Mac's `127.0.0.1` is never a phone URL and
