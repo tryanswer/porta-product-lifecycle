@@ -39,6 +39,7 @@ const RELEASE_WORKFLOW_PROTOCOL_VERSION = 2
 const MINIMUM_LEGACY_WORKFLOW_RUNTIME = '1.9.0'
 const MINIMUM_RELEASE_WORKFLOW_RUNTIME = '1.14.0'
 const MINIMUM_SCENE_PACK_READINESS_RUNTIME = '1.16.1'
+const MINIMUM_LOCAL_PRODUCT_RELEASE_RUNTIME = '1.16.5'
 const SKILL_ID = 'porta-product-lifecycle'
 const SKILL_VERSION = '1.0.1'
 const COMPATIBLE_STATE_SKILL_VERSIONS = new Set(['1.0.0', SKILL_VERSION])
@@ -156,6 +157,14 @@ async function main() {
     })
     return
   }
+  if (command === 'local-release-register') {
+    await registerLocalProductRelease(tokens)
+    return
+  }
+  if (command === 'local-release-status') {
+    await readLocalProductReleaseStatus(tokens)
+    return
+  }
   if (command === 'begin') {
     await begin(tokens)
     return
@@ -199,6 +208,9 @@ function helpText() {
     `  porta-product-lifecycle.mjs package-verify --spec <json-file> --package-root <absolute-path>\n\n` +
     `Lifecycle plan (planning never starts a WorkRun):\n` +
     `  porta-product-lifecycle.mjs lifecycle-plan --spec <json-file>\n\n` +
+    `Porta Local Product Release (non-publish Product Work; never Web Release):\n` +
+    `  porta-product-lifecycle.mjs local-release-register --run-key <key> --spec <json-file> --package-root <absolute-path> --provider <codex|claude|gemini> --provider-session-id <id> [--cwd <path>]\n` +
+    `  porta-product-lifecycle.mjs local-release-status --run-key <key>\n\n` +
     `Scene Pack readiness (Agent-observed UX signal; dedupe/LKG only; no WorkRun or publish authority):\n` +
     `  porta-product-lifecycle.mjs scene-pack-readiness-observe --spec <json-file>\n\n` +
     `Workflow v2 Static HTML publication (the version selector is required):\n` +
@@ -223,6 +235,345 @@ function helpText() {
     `  porta-product-lifecycle.mjs stop --run-key <key> [--cwd <path>]\n` +
     `  porta-product-lifecycle.mjs version\n\n` +
     `The client discovers Porta's standard user launcher before PATH. Set PORTA_BRIDGE_BIN only for an explicit nonstandard installation.\n`
+}
+
+async function registerLocalProductRelease(tokens) {
+  const options = parseOptions(tokens, [
+    'cwd',
+    'package-root',
+    'provider',
+    'provider-session-id',
+    'run-key',
+    'spec',
+  ])
+  const runKey = requireRunKey(options['run-key'])
+  const cwd = await resolveProjectCwd(options.cwd)
+  const provider = requireProvider(options.provider)
+  const providerSessionId = requireOpaqueInput(options['provider-session-id'], 'Provider Session')
+  const packageRoot = await resolveExistingDirectory(options['package-root'], 'Product Package root')
+  const specPath = await resolveExistingFile(options.spec, 'Product Package descriptor')
+  const descriptor = await readProductPackage(specPath)
+  const receipt = await verifyProductPackageRoot(descriptor.package, packageRoot)
+  requireLocalProductPackage(receipt.materializationCandidate)
+  await requireLocalProductReleaseCapabilities()
+
+  const stateFile = await localReleaseStateFile(runKey)
+  const candidatePath = `${stateFile}.candidate.json`
+  const identity = {
+    artifactSha256: receipt.artifacts[0].sha256,
+    candidateDigest: hashJson(receipt.materializationCandidate),
+    cwd,
+    packageDigest: receipt.packageDigest,
+    packageRoot,
+    provider,
+    providerSessionId,
+    runKey,
+    specPath,
+  }
+  let state = await readOptionalLocalReleaseState(stateFile)
+  if (state) {
+    requireSameLocalReleaseIdentity(state, identity)
+  } else {
+    state = {
+      ...identity,
+      candidatePath,
+      registrationReceipt: null,
+      type: 'porta-product-lifecycle-local-release-operation',
+      version: 1,
+      workReceipt: null,
+    }
+    await writeJsonAtomic(candidatePath, receipt.materializationCandidate)
+    await writeLocalReleaseState(stateFile, state)
+  }
+
+  if (!state.registrationReceipt) {
+    await writeJsonAtomic(candidatePath, receipt.materializationCandidate)
+  }
+
+  if (!state.workReceipt) {
+    const traceId = `porta-local-release-work:${randomUUID()}`
+    const value = await runBridge([
+      'workflow', 'product-work-begin',
+      '--workflow-protocol-version', '2',
+      '--cwd', cwd,
+      '--provider', provider,
+      '--provider-session-id', providerSessionId,
+      '--purpose', 'materialization',
+      '--idempotency-key', localReleaseIdempotencyKey(state, 'work'),
+      '--trace-id', traceId,
+      '--json',
+    ])
+    state.workReceipt = normalizeLocalProductWorkReceipt(value, state, traceId)
+    await writeLocalReleaseState(stateFile, state)
+  }
+
+  if (!state.registrationReceipt) {
+    const traceId = `porta-local-release-register:${randomUUID()}`
+    const payload = Buffer.from(JSON.stringify({
+      candidatePath: state.candidatePath,
+      mode: 'create-new',
+      packageRoot: state.packageRoot,
+      version: 1,
+    })).toString('base64url')
+    const value = await runBridge([
+      'workflow', 'product-materialization-register',
+      '--workflow-protocol-version', '2',
+      '--cwd', state.cwd,
+      '--payload', payload,
+      '--work-run-id', state.workReceipt.workRunId,
+      '--idempotency-key', localReleaseIdempotencyKey(state, 'register'),
+      '--trace-id', traceId,
+      '--json',
+    ])
+    state.registrationReceipt = normalizeLocalProductRegistrationReceipt(value, traceId)
+    await writeLocalReleaseState(stateFile, state)
+  }
+
+  writeResult({
+    complete: false,
+    ok: true,
+    requestRef: state.registrationReceipt.requestRef,
+    stateFile,
+    status: state.registrationReceipt.status,
+    type: 'porta-product-lifecycle-local-release-registration',
+    workRunKind: 'non-publish-product-work',
+  })
+}
+
+async function readLocalProductReleaseStatus(tokens) {
+  const options = parseOptions(tokens, ['run-key'])
+  const runKey = requireRunKey(options['run-key'])
+  await requireLocalProductReleaseCapabilities()
+  const stateFile = await localReleaseStateFile(runKey)
+  const state = await readOptionalLocalReleaseState(stateFile)
+  if (!state?.registrationReceipt) {
+    throw new ClientError('local_release_state_missing', 'No registered Local Product Release operation exists for this Run key.')
+  }
+  const traceId = `porta-local-release-status:${randomUUID()}`
+  const value = await runBridge([
+    'workflow', 'product-materialization-status',
+    '--workflow-protocol-version', '2',
+    '--request-ref', state.registrationReceipt.requestRef,
+    '--trace-id', traceId,
+    '--json',
+  ])
+  const status = normalizeLocalProductReleaseStatus(value, state, traceId)
+  writeResult({
+    complete: status.status === 'local-ready',
+    ok: true,
+    requestRef: status.requestRef,
+    ...(status.status === 'local-ready' ? { receipt: status } : {}),
+    stateFile,
+    status: status.status,
+    type: 'porta-product-lifecycle-local-release-status',
+  })
+}
+
+async function requireLocalProductReleaseCapabilities() {
+  const traceId = `porta-local-release-capabilities:${randomUUID()}`
+  const capabilities = await runBridge([
+    'workflow', 'capabilities',
+    '--workflow-protocol-version', '2',
+    '--trace-id', traceId,
+    '--json',
+  ])
+  const requiredCommands = [
+    'product-materialization-register',
+    'product-materialization-status',
+    'product-work-begin',
+  ]
+  if (!isRecord(capabilities) || capabilities.ok !== true || capabilities.protocolVersion !== 1 ||
+    capabilities.workflowProtocolVersion !== 2 || capabilities.eventContractVersion !== 2 ||
+    capabilities.type !== 'workflow-capabilities' || capabilities.traceId !== traceId ||
+    capabilities.platformSupported !== true ||
+    !isRuntimeAtLeast(capabilities.runtimeVersion, MINIMUM_LOCAL_PRODUCT_RELEASE_RUNTIME) ||
+    !Array.isArray(capabilities.capabilities) ||
+    !capabilities.capabilities.includes('porta.workflow.product-materialization.v1') ||
+    !Array.isArray(capabilities.commands) ||
+    !requiredCommands.every((command) => capabilities.commands.includes(command))) {
+    throw new ClientError(
+      'local_release_incompatible',
+      `Agent Bridge ${MINIMUM_LOCAL_PRODUCT_RELEASE_RUNTIME} with Product Materialization is required for Local Product Release.`,
+    )
+  }
+  return capabilities
+}
+
+function requireLocalProductPackage(candidate) {
+  const target = candidate?.package?.deploymentTarget
+  const profile = candidate?.package?.profile
+  if (target?.placement !== 'local-machine' || !['loopback', 'private'].includes(target.exposure) ||
+    !['static-web', 'local-runtime', 'mobile'].includes(profile?.kind)) {
+    throw new ClientError(
+      'local_release_target_invalid',
+      'Local Product Release requires a verified local-machine loopback/private Product Package.',
+    )
+  }
+}
+
+function normalizeLocalProductWorkReceipt(value, state, traceId) {
+  const receipt = requireExactRecord(value, [
+    'created', 'ok', 'projectContext', 'protocolVersion', 'provider',
+    'providerSessionId', 'purpose', 'status', 'traceId', 'type', 'version',
+    'workflowProtocolVersion', 'workRunId',
+  ], [], 'Product Work begin receipt')
+  if (receipt.ok !== true || receipt.protocolVersion !== 1 || receipt.workflowProtocolVersion !== 2 ||
+    receipt.version !== 1 || receipt.type !== 'product-work-begin' || receipt.traceId !== traceId ||
+    typeof receipt.created !== 'boolean' || receipt.provider !== state.provider ||
+    receipt.providerSessionId !== state.providerSessionId || receipt.purpose !== 'materialization' ||
+    receipt.status !== 'active' || !workflowRunPattern.test(String(receipt.workRunId ?? '')) ||
+    !isRecord(receipt.projectContext) || receipt.projectContext.rootPath !== state.cwd ||
+    !Number.isSafeInteger(receipt.projectContext.generation) || receipt.projectContext.generation < 1 ||
+    !isWorkflowOpaqueRef(receipt.projectContext.projectRef)) {
+    throw new ClientError('malformed_bridge_receipt', 'Agent Bridge returned an invalid non-publish Product Work receipt.')
+  }
+  return receipt
+}
+
+function normalizeLocalProductRegistrationReceipt(value, traceId) {
+  const receipt = requireExactRecord(value, [
+    'idempotent', 'ok', 'protocolVersion', 'requestRef', 'status', 'traceId',
+    'type', 'version', 'workflowProtocolVersion',
+  ], [], 'Product Materialization registration receipt')
+  if (receipt.ok !== true || receipt.protocolVersion !== 1 || receipt.workflowProtocolVersion !== 2 ||
+    receipt.version !== 1 || receipt.type !== 'product-materialization-registration-receipt' ||
+    receipt.traceId !== traceId || typeof receipt.idempotent !== 'boolean' ||
+    receipt.status !== 'pending' || !/^materialization_[A-Za-z0-9._:-]{8,159}$/.test(String(receipt.requestRef ?? ''))) {
+    throw new ClientError('malformed_bridge_receipt', 'Agent Bridge returned an invalid Product Materialization registration receipt.')
+  }
+  return receipt
+}
+
+function normalizeLocalProductReleaseStatus(value, state, traceId) {
+  if (!isRecord(value) || value.ok !== true || value.protocolVersion !== 1 ||
+    value.workflowProtocolVersion !== 2 || value.version !== 1 ||
+    value.type !== 'product-materialization-status' || value.traceId !== traceId ||
+    value.requestRef !== state.registrationReceipt.requestRef ||
+    !['pending', 'recovery', 'local-ready'].includes(value.status)) {
+    throw new ClientError('malformed_bridge_receipt', 'Agent Bridge returned an invalid Local Product Release status.')
+  }
+  if (value.status !== 'local-ready') {
+    return requireExactRecord(value, [
+      'ok', 'protocolVersion', 'requestRef', 'status', 'traceId', 'type',
+      'version', 'workflowProtocolVersion',
+    ], [], 'Pending Local Product Release status')
+  }
+  const receipt = requireExactRecord(value, [
+    'adapter', 'artifactSha256', 'custodyRef', 'ok', 'operationRef',
+    'packageDigest', 'protocolVersion', 'receiptRef', 'requestRef', 'settledAt',
+    'status', 'targetRef', 'traceId', 'type', 'version', 'workflowProtocolVersion',
+  ], [], 'Local Product Release ready receipt')
+  if (!['android', 'ios', 'local-runtime', 'static-web'].includes(receipt.adapter) ||
+    receipt.artifactSha256 !== state.artifactSha256 || receipt.packageDigest !== state.packageDigest ||
+    !isWorkflowOpaqueRef(receipt.custodyRef) || !isWorkflowOpaqueRef(receipt.receiptRef) ||
+    !isWorkflowOpaqueRef(receipt.targetRef) || !isIsoDateTime(receipt.settledAt) ||
+    !/^local-release-op:(?:deploy|rollback):[a-f0-9]{64}:(?:none|[a-f0-9]{64}):[a-f0-9]{32}$/.test(String(receipt.operationRef ?? ''))) {
+    throw new ClientError('malformed_bridge_receipt', 'Agent Bridge Local Product Release identity changed.')
+  }
+  return receipt
+}
+
+async function localReleaseStateFile(runKey) {
+  const home = await realpath(homedir()).catch(() => undefined)
+  if (!home) throw new ClientError('local_release_state_unavailable', 'User home is unavailable for Local Product Release recovery state.')
+  const porta = join(home, '.porta')
+  const lifecycle = join(porta, 'lifecycle-client')
+  const releases = join(lifecycle, 'local-release')
+  for (const directory of [porta, lifecycle, releases]) await ensureSafeDirectory(directory)
+  await chmod(releases, 0o700).catch(() => undefined)
+  return join(releases, `${runKey}.json`)
+}
+
+async function readOptionalLocalReleaseState(path) {
+  const info = await lstat(path).catch((error) => {
+    if (error?.code === 'ENOENT') return undefined
+    throw error
+  })
+  if (!info) return null
+  if (!info.isFile() || info.isSymbolicLink()) {
+    throw new ClientError('invalid_local_release_state', 'Local Product Release recovery state is unsafe.')
+  }
+  const source = await readBoundedRegularFile(path, {
+    errorCode: 'invalid_local_release_state',
+    maximumBytes: 256 * 1024,
+    message: 'Local Product Release recovery state is invalid.',
+  })
+  let value
+  try { value = JSON.parse(source) } catch {
+    throw new ClientError('invalid_local_release_state', 'Local Product Release recovery state is not valid JSON.')
+  }
+  validateLocalReleaseState(value)
+  return value
+}
+
+async function writeLocalReleaseState(path, state) {
+  validateLocalReleaseState(state)
+  await writeJsonAtomic(path, state)
+}
+
+function validateLocalReleaseState(value) {
+  const state = requireExactRecord(value, [
+    'artifactSha256', 'candidateDigest', 'candidatePath', 'cwd', 'packageDigest',
+    'packageRoot', 'provider', 'providerSessionId', 'registrationReceipt', 'runKey',
+    'specPath', 'type', 'version', 'workReceipt',
+  ], [], 'Local Product Release recovery state')
+  if (state.type !== 'porta-product-lifecycle-local-release-operation' || state.version !== 1 ||
+    !runKeyPattern.test(String(state.runKey ?? '')) || !providers.has(state.provider) ||
+    !isWorkflowOpaqueRef(state.providerSessionId) ||
+    ![state.artifactSha256, state.candidateDigest, state.packageDigest].every((value) => /^[a-f0-9]{64}$/.test(String(value ?? ''))) ||
+    ![state.candidatePath, state.cwd, state.packageRoot, state.specPath].every((value) => typeof value === 'string' && value.startsWith('/')) ||
+    (state.workReceipt !== null && !isRecord(state.workReceipt)) ||
+    (state.registrationReceipt !== null && !isRecord(state.registrationReceipt)) ||
+    (state.registrationReceipt !== null && state.workReceipt === null)) {
+    throw new ClientError('invalid_local_release_state', 'Local Product Release recovery state is malformed.')
+  }
+  if (state.workReceipt !== null) {
+    normalizeLocalProductWorkReceipt(state.workReceipt, state, state.workReceipt.traceId)
+  }
+  if (state.registrationReceipt !== null) {
+    normalizeLocalProductRegistrationReceipt(
+      state.registrationReceipt,
+      state.registrationReceipt.traceId,
+    )
+  }
+  return state
+}
+
+function requireSameLocalReleaseIdentity(state, identity) {
+  for (const [key, value] of Object.entries(identity)) {
+    if (state[key] !== value) {
+      throw new ClientError('local_release_operation_conflict', 'Run key is already bound to a different Local Product Release input.')
+    }
+  }
+}
+
+function localReleaseIdempotencyKey(state, phase) {
+  return `porta-local-${phase}:${createHash('sha256').update([
+    state.runKey, state.cwd, state.provider, state.providerSessionId,
+    state.packageDigest, phase,
+  ].join('\0')).digest('hex')}`
+}
+
+async function resolveExistingDirectory(value, label) {
+  const path = resolve(String(value ?? ''))
+  const actual = await realpath(path).catch(() => undefined)
+  const info = actual ? await stat(actual).catch(() => undefined) : undefined
+  if (!actual || !info?.isDirectory()) throw new ClientError('invalid_arguments', `${label} must be an existing directory.`)
+  return actual
+}
+
+async function resolveExistingFile(value, label) {
+  const path = resolve(String(value ?? ''))
+  const actual = await realpath(path).catch(() => undefined)
+  const info = actual ? await lstat(actual).catch(() => undefined) : undefined
+  if (!actual || !info?.isFile() || info.isSymbolicLink()) throw new ClientError('invalid_arguments', `${label} must be an existing regular file.`)
+  return actual
+}
+
+function requireOpaqueInput(value, label) {
+  const normalized = String(value ?? '')
+  if (!isWorkflowOpaqueRef(normalized)) throw new ClientError('invalid_arguments', `${label} is invalid.`)
+  return normalized
 }
 
 async function observeScenePackReadiness(tokens) {

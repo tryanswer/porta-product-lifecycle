@@ -14,7 +14,9 @@ state:
 `define -> develop/verify -> materialize -> [deploy?] -> [distribute?] -> operate/review/iterate`
 
 The lifecycle is a branching state graph. Deployment and distribution are
-optional and independent. A local-only product is complete without either.
+independent. A Product Package with no deployment target may stop after
+materialization; a package that declares `local-machine` is not complete until
+Porta settles an exact Local Product Release receipt.
 
 ## Admission and authority
 
@@ -122,6 +124,22 @@ private or public. Use the matching adapter. Inspect, plan, confirm the exact
 external phase, execute, and independently read back the runtime. A deployment
 receipt never proves distribution.
 
+For a `local-machine` target, read
+[references/local-product-release-v1.md](references/local-product-release-v1.md)
+completely. A project-specific deployment receipt, a healthy loopback URL, or a
+Product Package file does not prove Porta access. Register the verified package
+through the bundled `local-release-register` command and retain its exact Run
+key. Use `local-release-status` with that same key until Bridge returns
+`local-ready`; pending, recovery, timeout, malformed output, and a locally
+invented receipt are not completion.
+
+This path creates a bounded non-publish Product Work only to bind the exact
+Agent, Project Context, Package and Product Materialization request. It never
+creates a Web Release publish intent or public Distribution. On Static Web,
+Porta App opens the settled loopback target through its verified SSH
+local-forward Adapter; never tell a phone user to open the Mac's `127.0.0.1`
+URL directly.
+
 ### 7. Distribute when declared
 
 Use channel adapters independently: Porta Web Release, download, enterprise,
@@ -164,6 +182,8 @@ explicit input migration and fail-closed retained-run handling.
   paths, descriptor contents, or artifact contents in lifecycle events.
 - Never claim package validity without actual package-root readback.
 - Never turn preview reachability into deployment or public availability.
+- Never call a local deployment a Porta Local Product Release without the exact
+  Bridge `local-ready` receipt for the registered Product Package.
 - Never invent deployment or distribution because a product type supports it.
 - Never reuse deployment evidence as distribution evidence or vice versa.
 - Never create a replacement WorkRun to recover an exact retained run.

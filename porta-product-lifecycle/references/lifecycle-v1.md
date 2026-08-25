@@ -20,7 +20,8 @@ Canonical paths include:
 
 | Product intent | Deployment | Distribution |
 | --- | --- | --- |
-| local-only runtime | skipped | skipped |
+| package only, no deployment target | skipped | skipped |
+| local Product Release | `local-machine-loopback` or `local-machine-private` | skipped |
 | private service on owned host | `remote-host-private` | skipped |
 | public managed Web product | `managed-cloud-public` | `porta-web-release` when declared |
 | mobile store candidate | skipped unless separately declared | `google-play` or `app-store` |
@@ -32,3 +33,5 @@ state. Submission, approval, rollout, and public availability remain separate.
 
 A planner result never starts a WorkRun. Porta Web distribution may create a
 WorkRun only after a current explicit publication intent and Bridge preflight.
+Local Product Release registration uses a separate bounded non-publish Product
+Work and cannot be represented by a project-specific deployment receipt.

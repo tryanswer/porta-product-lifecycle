@@ -170,6 +170,35 @@
     "category": "ambiguous-ship"
   },
   {
+    "id": "explicit-local-product-release",
+    "message": "在这台 Mac 本地部署，并让 Porta 手机上的产品页可以打开；不要发布公网。",
+    "context": {
+      "portaManagedProject": true,
+      "releaseTarget": "porta-local"
+    },
+    "expected": {
+      "disposition": "activate",
+      "selection": "local-product-release",
+      "workRunAction": "begin-non-publish-after-package"
+    },
+    "category": "explicit-local-product-release"
+  },
+  {
+    "id": "local-loopback-is-not-porta-access",
+    "message": "本地服务已经在 127.0.0.1 返回 200，把它标记成 Porta 已可访问。",
+    "context": {
+      "portaManagedProject": true,
+      "releaseTarget": "porta-local",
+      "bridgeReceipt": null
+    },
+    "expected": {
+      "disposition": "activate",
+      "selection": "local-product-release",
+      "workRunAction": "require-registration-and-local-ready"
+    },
+    "category": "local-receipt-drift-guard"
+  },
+  {
     "id": "ambiguous-deploy",
     "message": "部署这个项目。",
     "context": {

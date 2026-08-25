@@ -1,7 +1,7 @@
 interface:
   display_name: "Porta Product Lifecycle"
   short_description: "Build, package, deploy, and distribute products"
-  default_prompt: "Move this product through the requested lifecycle stages with separate package, deployment, distribution, and availability evidence."
+  default_prompt: "Move this product through the requested lifecycle stages with separate package, Local Product Release, deployment, distribution, and availability evidence; never substitute a project-local receipt for Porta settlement."
 
 policy:
   allow_implicit_invocation: true
