@@ -30,6 +30,16 @@ test('development evidence can use privacy-bounded Agent Artifact Handoff withou
   assert.match(handoff, /phone receipt, preview, or save[\s\S]*separate App\/device observations/u)
 })
 
+test('artifact handoff separates original transfer, inline preview, and SFTP limits', async () => {
+  const handoff = await readFile(artifactHandoffUrl, 'utf8')
+  assert.match(handoff, /256 MiB/u)
+  assert.match(handoff, /16 MiB/u)
+  assert.match(handoff, /native.*downsample|downsampled.*native/iu)
+  assert.match(handoff, /save.*original|original.*save/iu)
+  assert.match(handoff, /> 256 MiB|larger than 256 MiB/u)
+  assert.match(handoff, /ordinary SFTP/u)
+})
+
 test('routing covers product discovery, engineering, delivery, distribution, and operation', async () => {
   const routing = await readFile(routingUrl, 'utf8')
   for (const required of [

@@ -185,7 +185,7 @@ if (command === 'pull' && workflowVersion === 2) {
       } : {}),
       requestId,
       skillId: 'porta-product-lifecycle',
-      skillVersion: '1.0.4',
+      skillVersion: '1.0.5',
       sourceSequence: 7,
       status,
       ...(status === 'ready' ? { terminalAt: '2026-07-31T10:10:00.000Z' } : {}),
@@ -596,7 +596,7 @@ test('begin persists exact Bridge identity and replays locally without a duplica
   const fixture = await createFixture()
   try {
     const { key, result } = await beginRun(fixture)
-    assert.equal(result.receipt.skillVersion, '1.0.4')
+    assert.equal(result.receipt.skillVersion, '1.0.5')
     assert.equal(result.receipt.workRunId, 'workrun_33333333-3333-4333-8333-333333333333')
     const replay = parseSuccess(run(fixture, ['begin', '--run-key', key, '--provider', 'codex']))
     assert.equal(replay.cached, true)
@@ -644,7 +644,7 @@ test('new identity refuses legacy Skill state instead of emitting a mixed-identi
   }
 })
 
-test('1.0.4 client resumes a retained 1.0.0 run with its original Bridge identity', async () => {
+test('1.0.5 client resumes a retained 1.0.0 run with its original Bridge identity', async () => {
   const fixture = await createFixture()
   try {
     const { key, result } = await beginReleaseRun(fixture)
@@ -669,7 +669,7 @@ test('1.0.4 client resumes a retained 1.0.0 run with its original Bridge identit
   }
 })
 
-test('1.0.4 client resumes a retained 1.0.1 run with its original Bridge identity', async () => {
+test('1.0.5 client resumes a retained 1.0.1 run with its original Bridge identity', async () => {
   const fixture = await createFixture()
   try {
     const { key, result } = await beginReleaseRun(fixture)
@@ -694,7 +694,7 @@ test('1.0.4 client resumes a retained 1.0.1 run with its original Bridge identit
   }
 })
 
-test('1.0.4 client resumes a retained 1.0.2 run with its original Bridge identity', async () => {
+test('1.0.5 client resumes a retained 1.0.2 run with its original Bridge identity', async () => {
   const fixture = await createFixture()
   try {
     const { key, result } = await beginReleaseRun(fixture)
@@ -719,7 +719,7 @@ test('1.0.4 client resumes a retained 1.0.2 run with its original Bridge identit
   }
 })
 
-test('1.0.4 client resumes a retained 1.0.3 run with its original Bridge identity', async () => {
+test('1.0.5 client resumes a retained 1.0.3 run with its original Bridge identity', async () => {
   const fixture = await createFixture()
   try {
     const { key, result } = await beginReleaseRun(fixture)
@@ -740,7 +740,7 @@ test('1.0.4 client resumes a retained 1.0.3 run with its original Bridge identit
   }
 })
 
-test('1.0.4 client refuses an invented prior version of the new identity', async () => {
+test('1.0.5 client refuses an invented prior version of the new identity', async () => {
   const fixture = await createFixture()
   try {
     const { key, result } = await beginReleaseRun(fixture)
@@ -921,7 +921,7 @@ test('incompatible Bridge runtime is rejected before a WorkRun begins', async ()
 test('Agent Artifact Handoff publishes one request-owned file without creating a WorkRun', async () => {
   const fixture = await createFixture()
   try {
-    fixture.environment.FAKE_RUNTIME_VERSION = '1.17.0'
+    fixture.environment.FAKE_RUNTIME_VERSION = '1.17.1'
     const requestId = 'request_12345678'
     const artifactDirectory = join(fixture.project, '.porta', 'artifacts', requestId)
     const artifactPath = join(artifactDirectory, 'review.md')
@@ -1163,7 +1163,7 @@ test('Workflow v2 capability preflight and begin are explicit and preserve the P
     ])
 
     const { key, result } = await beginReleaseRun(fixture)
-    assert.equal(result.receipt.skillVersion, '1.0.4')
+    assert.equal(result.receipt.skillVersion, '1.0.5')
     assert.equal(result.receipt.status, 'implementing')
     assert.equal(result.receipt.publishIntent.projectRef, 'project_fixture-1234')
     assert.equal(result.receipt.publishIntent.projectContextGeneration, 1)

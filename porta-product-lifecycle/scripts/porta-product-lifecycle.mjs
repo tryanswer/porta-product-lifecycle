@@ -40,10 +40,10 @@ const MINIMUM_LEGACY_WORKFLOW_RUNTIME = '1.9.0'
 const MINIMUM_RELEASE_WORKFLOW_RUNTIME = '1.14.0'
 const MINIMUM_SCENE_PACK_READINESS_RUNTIME = '1.16.1'
 const MINIMUM_LOCAL_PRODUCT_RELEASE_RUNTIME = '1.16.6'
-const MINIMUM_AGENT_ARTIFACT_RUNTIME = '1.17.0'
+const MINIMUM_AGENT_ARTIFACT_RUNTIME = '1.17.1'
 const SKILL_ID = 'porta-product-lifecycle'
-const SKILL_VERSION = '1.0.4'
-const COMPATIBLE_STATE_SKILL_VERSIONS = new Set(['1.0.0', '1.0.1', '1.0.2', '1.0.3', SKILL_VERSION])
+const SKILL_VERSION = '1.0.5'
+const COMPATIBLE_STATE_SKILL_VERSIONS = new Set(['1.0.0', '1.0.1', '1.0.2', '1.0.3', '1.0.4', SKILL_VERSION])
 const MAXIMUM_BRIDGE_OUTPUT_BYTES = 1024 * 1024
 const MAXIMUM_SPEC_BYTES = 1024 * 1024
 const MAXIMUM_SCENE_PACK_READINESS_SPEC_BYTES = 24 * 1024
@@ -280,7 +280,7 @@ async function publishAgentArtifact(tokens) {
     status.protocolVersion !== 1 || status.traceId !== statusTraceId ||
     !isRuntimeAtLeast(status.runtimeVersion, MINIMUM_AGENT_ARTIFACT_RUNTIME)
   ) {
-    throw new ClientError('workflow_incompatible', 'Agent Bridge Runtime 1.17.0 or newer is required for Agent Artifact Handoff.')
+    throw new ClientError('workflow_incompatible', 'Agent Bridge Runtime 1.17.1 or newer is required for Agent Artifact Handoff.')
   }
   const traceId = `porta-skill-artifact-publish:${randomUUID()}`
   const receipt = await runBridge([
@@ -313,7 +313,7 @@ function validateAgentArtifactPublishReceipt(value, { intent, path, traceId }) {
     receipt.traceId !== traceId || receipt.type !== 'artifact-publish' ||
     typeof receipt.eventId !== 'string' || receipt.eventId.length < 8 || receipt.eventId.length > 512 ||
     typeof artifact.artifactRef !== 'string' || !/^artifact_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(artifact.artifactRef) ||
-    !Number.isSafeInteger(artifact.bytes) || artifact.bytes < 0 || artifact.bytes > 32 * 1024 * 1024 ||
+    !Number.isSafeInteger(artifact.bytes) || artifact.bytes < 0 || artifact.bytes > 256 * 1024 * 1024 ||
     typeof artifact.digest !== 'string' || !/^[a-f0-9]{64}$/.test(artifact.digest) ||
     !isIsoDateTime(artifact.expiresAt) ||
     artifact.fileName !== path.split(/[\\/]/).at(-1) ||
