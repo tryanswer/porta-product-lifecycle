@@ -209,3 +209,39 @@ test('CLI verifies a local-runtime file but never executes its declared command'
     await rm(fixtureRoot, { recursive: true, force: true })
   }
 })
+
+test('Product Package v2 emits digest-bound card assets in the candidate', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'porta-presentation-package-'))
+  try {
+    const runtime = '#!/bin/sh\nexit 0\n'
+    const logo = Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), Buffer.from('verified-logo')])
+    const cover = Buffer.concat([Buffer.from('RIFF0000WEBP', 'ascii'), Buffer.from('verified-cover')])
+    await mkdir(join(root, 'bin'), { recursive: true })
+    await mkdir(join(root, 'presentation'), { recursive: true })
+    await writeFile(join(root, 'bin', 'product'), runtime)
+    await writeFile(join(root, 'presentation', 'logo.png'), logo)
+    await writeFile(join(root, 'presentation', 'cover.webp'), cover)
+    const spec = {
+      artifacts: [
+        { bytes: Buffer.byteLength(runtime), id: 'artifact_runtime', kind: 'executable-file', path: 'bin/product', sha256: sha(runtime) },
+        { bytes: logo.length, id: 'presentation_logo', kind: 'presentation-file', mediaType: 'image/png', path: 'presentation/logo.png', sha256: sha(logo) },
+        { bytes: cover.length, id: 'presentation_cover', kind: 'presentation-file', mediaType: 'image/webp', path: 'presentation/cover.webp', sha256: sha(cover) },
+      ],
+      descriptor: { capabilities: ['local.runtime'], summary: 'Local presentation fixture.' },
+      presentation: { cover: { artifactId: 'presentation_cover' }, logo: { artifactId: 'presentation_logo' } },
+      product: { displayName: 'Presentation', id: 'product_presentation', version: '1.0.0' },
+      profile: { command: ['bin/product'], kind: 'local-runtime' },
+      provenance: { builder: { id: 'builder.fixture', version: '1.0.0' }, skills: [{ id: 'porta-product-lifecycle', version: '1.0.5' }], sourceRevision: 'abcdef1234567890' },
+      schemaVersion: 2,
+      validation: { checks: [{ evidenceRef: 'build:presentation', id: 'check_build', kind: 'build', observedAt: '2026-08-27T00:00:00.000Z', status: 'passed' }] },
+    }
+    const receipt = await verifyProductPackageRoot(spec, root)
+    assert.equal(receipt.materializationCandidate.version, 2)
+    assert.deepEqual(receipt.materializationCandidate.presentationAssets, [
+      { bytes: logo.length, contentBase64: logo.toString('base64'), mediaType: 'image/png', path: 'presentation/logo.png', role: 'logo', sha256: sha(logo) },
+      { bytes: cover.length, contentBase64: cover.toString('base64'), mediaType: 'image/webp', path: 'presentation/cover.webp', role: 'cover', sha256: sha(cover) },
+    ])
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})

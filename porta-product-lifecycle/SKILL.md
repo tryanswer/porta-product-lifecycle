@@ -120,9 +120,30 @@ do not request source upload or simulate managed isolation.
 ### 4. Materialize a Product Package
 
 Read [references/product-package-v1.md](references/product-package-v1.md)
-completely. Existing constructors such as Vite, Gradle, Xcode, Cargo, or custom
-build scripts remain authoritative for their build. Adapt their verified result
-into exactly one Product Package v1; do not replace the constructor.
+completely for compatibility. When the product is end-user visible and its
+verified Logo or representative cover must appear in Porta Products, read
+[references/product-package-v2.md](references/product-package-v2.md) completely
+and materialize Product Package v2. Read
+[references/product-assets-v1.md](references/product-assets-v1.md) completely
+before Product Package settlement. Existing constructors such as Vite, Gradle,
+Xcode, Cargo, or custom build scripts remain authoritative for their build.
+Adapt their verified result into exactly one Product Package; do not replace the
+constructor. Product Package v1 remains metadata-only for presentation and must
+fall back in Porta. Product Package v2 is required for actual Logo or cover
+delivery to Porta.
+
+Run the Product Asset Readiness pass: classify applicability; reject starter or
+dependency branding; reuse verified project-owned assets; prefer an
+exact-candidate screenshot for a visual cover; and make the model derive a
+bounded asset brief from verified product context for every applicable missing
+asset. The model must attempt construction or generation with an available
+specialized logo, capture, or image-generation capability, then inspect,
+integrate, rebuild, and verify the result. Use the deterministic App fallback
+only after the relevant capability is unavailable or the attempted result fails
+or is rejected. If a verified Logo or cover exists, do not settle a v1 package
+while implying Porta will display it: use the v2 presentation contract or
+explicitly report the deterministic fallback. Do not invent descriptor fields
+or artifact kinds.
 
 Validate the descriptor and exact package root before deployment/distribution:
 
@@ -134,6 +155,32 @@ The verifier reads actual regular-file bytes, rejects symlinks and undeclared
 files, and checks exact byte counts and SHA-256/tree digests. A local-runtime
 command is untrusted entrypoint metadata; validation and installation never run
 it.
+
+When the requested outcome is a long-lived private Product/Revision rather
+than a local deployment or publication, read
+[references/private-product-v1.md](references/private-product-v1.md)
+completely. Register the verified Static Web package with
+`private-product-register`, retain the exact Run key, and poll only
+`private-product-status` for that operation. Only Bridge `ready` plus Product
+Platform Product/Revision identity proves private materialization. This path
+does not deploy, distribute, publish, or create a public URL.
+
+If installation or release also supplies a Product Capability Manifest, read
+[references/product-capability-negotiation-v1.md](references/product-capability-negotiation-v1.md)
+completely. Keep it as a separate package-bound strict sidecar; never add it to
+or reinterpret Product Package v1/v2. Run the read-only negotiation before the
+install or release mutation:
+
+```text
+node <skill-directory>/scripts/porta-product-lifecycle.mjs capability-negotiate --spec <product-capability-negotiation.json>
+```
+
+Negotiation only validates declaration and consent-candidate bindings. It never
+activates capabilities or creates a WorkRun, and `authorityVerified: false`
+requires the final Host/Broker to verify consent. Treat `blocked`,
+`consent-required`, and `host-verification-required` as fail-closed gates; do
+not infer consent from a self-consistent receipt digest. Network and Messaging
+remain unavailable in this contract.
 
 ### 5. Plan the branching lifecycle
 

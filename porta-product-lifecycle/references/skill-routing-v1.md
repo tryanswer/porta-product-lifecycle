@@ -159,12 +159,20 @@ Candidate guidance:
 - use the selected domain constructor or artifact Skill (for example a web,
   presentation, document, mobile or native build Skill) to create the artifact;
 - retain the project builder as authority and adapt its verified output into
-  Product Package v1 rather than introducing a second build system.
+  Product Package v1 rather than introducing a second build system;
+- establish product identity assets before Product Package settlement using the
+  Product Asset Readiness reference: classify applicable roles, reject template
+  residue, reuse project-owned identity, prefer exact-candidate screenshots,
+  derive an asset brief from verified product context, require the model to
+  attempt construction or generation for every applicable missing asset,
+  integrate and validate generated output, and retain a deterministic consumer
+  fallback only after the attempt is unavailable, fails, or is rejected,
+  without inventing schema fields or treating missing artwork as a build failure.
 
 Exit evidence: exact source revision, constructor and selected Skill
-provenance, verified artifact bytes/tree, descriptor, validation checks and one
-Product Package receipt. A build directory or successful command is not a
-Product Package.
+provenance, verified artifact bytes/tree, descriptor, validation checks, a
+bounded Asset Readiness Receipt, and one Product Package receipt. A build
+directory or successful command is not a Product Package.
 
 ### 4. Preview and accept
 

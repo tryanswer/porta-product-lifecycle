@@ -7,6 +7,8 @@ const routingUrl = new URL('../references/skill-routing-v1.md', import.meta.url)
 const evalsUrl = new URL('../evals/lifecycle-routing-cases.json', import.meta.url)
 const metadataUrl = new URL('../agents/openai.yaml', import.meta.url)
 const artifactHandoffUrl = new URL('../references/agent-artifact-handoff-v1.md', import.meta.url)
+const productPackageUrl = new URL('../references/product-package-v1.md', import.meta.url)
+const productAssetsUrl = new URL('../references/product-assets-v1.md', import.meta.url)
 
 test('Lifecycle requires one phase routing contract before phase work begins', async () => {
   const skill = await readFile(skillUrl, 'utf8')
@@ -28,16 +30,6 @@ test('development evidence can use privacy-bounded Agent Artifact Handoff withou
   assert.match(handoff, /does not create a WorkRun/u)
   assert.match(handoff, /must not contain an absolute\s+remote path or file bytes/u)
   assert.match(handoff, /phone receipt, preview, or save[\s\S]*separate App\/device observations/u)
-})
-
-test('artifact handoff separates original transfer, inline preview, and SFTP limits', async () => {
-  const handoff = await readFile(artifactHandoffUrl, 'utf8')
-  assert.match(handoff, /256 MiB/u)
-  assert.match(handoff, /16 MiB/u)
-  assert.match(handoff, /native.*downsample|downsampled.*native/iu)
-  assert.match(handoff, /save.*original|original.*save/iu)
-  assert.match(handoff, /> 256 MiB|larger than 256 MiB/u)
-  assert.match(handoff, /ordinary SFTP/u)
 })
 
 test('routing covers product discovery, engineering, delivery, distribution, and operation', async () => {
@@ -68,6 +60,36 @@ test('routing covers product discovery, engineering, delivery, distribution, and
   ]) assert.match(routing, new RegExp(`\\b${adapter}\\b`, 'u'))
 })
 
+test('materialization establishes honest product identity assets with a backward-compatible fallback', async () => {
+  const skill = await readFile(skillUrl, 'utf8')
+  const routing = await readFile(routingUrl, 'utf8')
+  const productPackage = await readFile(productPackageUrl, 'utf8')
+  const productAssets = await readFile(productAssetsUrl, 'utf8')
+
+  assert.match(skill, /Read\s+\[references\/product-assets-v1\.md\].*before Product Package settlement/su)
+  assert.match(routing, /establish product identity assets before Product Package settlement/iu)
+  assert.match(productPackage, /explicit project logo.*Web App Manifest.*apple-touch-icon.*favicon/isu)
+  assert.match(productPackage, /deterministic monogram/iu)
+  assert.match(productPackage, /verified product screenshot/iu)
+  assert.match(productPackage, /must not invent a Product Package field or undeclared artifact/iu)
+  assert.match(productPackage, /absence of a logo or cover does not invalidate Product Package v1/iu)
+  assert.match(productAssets, /logo.*cover.*not-applicable/isu)
+  assert.match(productAssets, /starter|template/iu)
+  assert.match(productAssets, /project-owned.*Web App Manifest.*apple-touch-icon.*favicon/isu)
+  assert.match(productAssets, /exact candidate.*screenshot/isu)
+  assert.match(productAssets, /specialized.*logo.*Skill|logo.*specialized.*Skill/isu)
+  assert.match(productAssets, /image generation/iu)
+  assert.match(productAssets, /derive.*asset brief.*product.*context/isu)
+  assert.match(productAssets, /applicable.*missing.*must.*attempt.*(?:construct|generat)/isu)
+  assert.match(productAssets, /fallback.*only after.*(?:unavailable|fails|rejected)/isu)
+  assert.match(productAssets, /integrate.*rebuild.*verify/isu)
+  assert.match(productAssets, /user-visible.*logo.*must not.*not-applicable/isu)
+  assert.match(productAssets, /capability.*attempt count.*outcome.*failure evidence/isu)
+  assert.match(productAssets, /provided.*generated.*fallback.*not-applicable/isu)
+  assert.match(productAssets, /must not.*Product Package.*field/isu)
+  assert.match(productAssets, /broken image/iu)
+})
+
 test('routing searches reusable and maintained capabilities without silently installing them', async () => {
   const routing = await readFile(routingUrl, 'utf8')
 
@@ -95,6 +117,7 @@ test('routing pressure cases cover shortcuts across the complete lifecycle', asy
     'install an arbitrary skill',
     'publish without readback',
     'stop after launch',
+    'starter-template favicon',
   ]) assert.match(joined, new RegExp(pressure, 'iu'))
 })
 

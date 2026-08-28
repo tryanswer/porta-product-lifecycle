@@ -24,7 +24,7 @@ function treeDigest(files) {
     .join(''))
 }
 
-async function fixture() {
+async function fixture({ privateProduct = false } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'porta-local-release-client-'))
   const project = join(root, 'project')
   const packageRoot = join(root, 'package')
@@ -60,7 +60,9 @@ async function fixture() {
       skills: [{ id: 'porta-product-lifecycle', version: '1.0.4' }],
       sourceRevision: 'abcdef1234567890',
     },
-    deploymentTarget: { placement: 'local-machine', exposure: 'loopback' },
+    ...(privateProduct ? {} : {
+      deploymentTarget: { placement: 'local-machine', exposure: 'loopback' },
+    }),
   }))
   await writeFile(bridge, `#!/usr/bin/env node
 const fs = require('node:fs')
@@ -114,6 +116,7 @@ if (command === 'product-materialization-register') {
 }
 if (command === 'product-materialization-status') {
   const ready = process.env.FAKE_LOCAL_READY === '1'
+  const privateReady = process.env.FAKE_PRIVATE_READY === '1'
   console.log(JSON.stringify({
     ...(ready ? {
       adapter: 'static-web', artifactSha256: process.env.FAKE_ARTIFACT_SHA,
@@ -121,8 +124,13 @@ if (command === 'product-materialization-status') {
       packageDigest: process.env.FAKE_PACKAGE_DIGEST, receiptRef: 'receipt_fixture',
       settledAt: '2026-08-25T01:00:00.000Z', targetRef: 'target_fixture'
     } : {}),
+    ...(privateReady ? {
+      contentDigest: process.env.FAKE_CONTENT_DIGEST,
+      latestReadyRevisionRef: 'revision_fixture_1234', productRef: 'product_fixture_1234',
+      productVersion: 1, readyAt: '2026-08-25T01:00:00.000Z', revisionRef: 'revision_fixture_1234'
+    } : {}),
     ok: true, protocolVersion: 1, requestRef: option('--request-ref'),
-    status: ready ? 'local-ready' : 'pending', traceId: option('--trace-id'),
+    status: ready ? 'local-ready' : privateReady ? 'ready' : 'pending', traceId: option('--trace-id'),
     type: 'product-materialization-status', version: 1, workflowProtocolVersion: 2
   }))
   process.exit(0)
@@ -227,6 +235,59 @@ test('reports complete only from exact Bridge local-ready status', async () => {
     })
     assert.equal(ready.status, 0, ready.stderr)
     assert.equal(JSON.parse(ready.stdout).complete, true)
+  } finally {
+    await value.cleanup()
+  }
+})
+
+test('registers and settles one verified private Product without publication intent', async () => {
+  const value = await fixture({ privateProduct: true })
+  try {
+    const args = [
+      'private-product-register', '--run-key', runKey, '--spec', value.specPath,
+      '--package-root', value.packageRoot, '--provider', 'codex',
+      '--provider-session-id', 'session_fixture_1234', '--cwd', value.project,
+    ]
+    const registered = run(value, args)
+    assert.equal(registered.status, 0, registered.stderr)
+    const registration = JSON.parse(registered.stdout)
+    assert.equal(registration.type, 'porta-product-lifecycle-private-product-registration')
+    assert.equal(registration.workRunKind, 'non-publish-product-work')
+    const calls = (await readFile(value.log, 'utf8')).trim().split('\n').map(JSON.parse)
+    assert.deepEqual(calls.map((call) => call[1]), [
+      'capabilities', 'product-work-begin', 'product-materialization-register',
+    ])
+    const state = JSON.parse(await readFile(registration.stateFile, 'utf8'))
+    assert.equal(state.type, 'porta-product-lifecycle-private-product-operation')
+
+    const pending = run(value, ['private-product-status', '--run-key', runKey])
+    assert.equal(pending.status, 0, pending.stderr)
+    assert.equal(JSON.parse(pending.stdout).complete, false)
+    const ready = run(value, ['private-product-status', '--run-key', runKey], {
+      FAKE_PRIVATE_READY: '1',
+      FAKE_CONTENT_DIGEST: 'a'.repeat(64),
+    })
+    assert.equal(ready.status, 0, ready.stderr)
+    const receipt = JSON.parse(ready.stdout)
+    assert.equal(receipt.complete, true)
+    assert.equal(receipt.receipt.productRef, 'product_fixture_1234')
+    assert.equal(receipt.receipt.revisionRef, 'revision_fixture_1234')
+  } finally {
+    await value.cleanup()
+  }
+})
+
+test('private Product admission rejects local deployment intent before Bridge mutation', async () => {
+  const value = await fixture()
+  try {
+    const result = run(value, [
+      'private-product-register', '--run-key', runKey, '--spec', value.specPath,
+      '--package-root', value.packageRoot, '--provider', 'codex',
+      '--provider-session-id', 'session_fixture_1234', '--cwd', value.project,
+    ])
+    assert.notEqual(result.status, 0)
+    assert.match(result.stderr, /private_product_target_invalid/u)
+    await assert.rejects(readFile(value.log, 'utf8'), { code: 'ENOENT' })
   } finally {
     await value.cleanup()
   }

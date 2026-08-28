@@ -147,3 +147,54 @@ test('requires one unambiguous primary artifact for every profile', () => {
     (error) => error instanceof ProductPackageValidationError && error.code === 'incompatible_artifact',
   )
 })
+
+test('validates Product Package v2 card presentation assets without changing v1', () => {
+  const value = basePackage(
+    { kind: 'local-runtime', command: ['bin/example'] },
+    {
+      schemaVersion: 2,
+      presentation: {
+        cover: { artifactId: 'presentation_cover' },
+        logo: { artifactId: 'presentation_logo' },
+      },
+    },
+  )
+  value.artifacts.push(
+    { bytes: 80, id: 'presentation_logo', kind: 'presentation-file', mediaType: 'image/png', path: 'presentation/logo.png', sha256 },
+    { bytes: 320, id: 'presentation_cover', kind: 'presentation-file', mediaType: 'image/webp', path: 'presentation/cover.webp', sha256 },
+  )
+  const result = validateProductPackage(value)
+  assert.equal(result.package.schemaVersion, 2)
+  assert.deepEqual(result.package.presentation, value.presentation)
+
+  const v1 = basePackage({ kind: 'local-runtime', command: ['bin/example'] }, {
+    presentation: { logo: { artifactId: 'presentation_logo' } },
+  })
+  assert.throws(
+    () => validateProductPackage(v1),
+    (error) => error instanceof ProductPackageValidationError && error.code === 'unsupported_presentation_contract',
+  )
+})
+
+test('fails closed on missing, unsafe, or oversized v2 presentation identity', () => {
+  const value = basePackage({ kind: 'local-runtime', command: ['bin/example'] }, { schemaVersion: 2 })
+  assert.throws(
+    () => validateProductPackage(value),
+    (error) => error instanceof ProductPackageValidationError && error.code === 'missing_presentation_contract',
+  )
+
+  value.presentation = { logo: { artifactId: 'presentation_logo' } }
+  value.artifacts.push({
+    bytes: 129 * 1024,
+    id: 'presentation_logo',
+    kind: 'presentation-file',
+    mediaType: 'image/svg+xml',
+    path: 'presentation/logo.svg',
+    sha256,
+  })
+  assert.throws(
+    () => validateProductPackage(value),
+    (error) => error instanceof ProductPackageValidationError &&
+      ['invalid_presentation_contract', 'oversized_presentation_asset'].includes(error.code),
+  )
+})

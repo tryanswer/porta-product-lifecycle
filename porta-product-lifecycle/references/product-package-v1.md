@@ -68,6 +68,49 @@ Provenance is
 declared constructor and Skill chain without embedding source, logs, secrets,
 or environment values.
 
+## Product identity and presentation assets
+
+Product identity is part of construction quality, but Product Package v1 has no
+dedicated logo or cover field. Follow
+[Product Asset Readiness v1](product-assets-v1.md) before package settlement,
+then inspect project-owned assets in this order: an explicit project logo; a
+local Web App Manifest icon; an `apple-touch-icon`; then a local favicon that
+the target can decode. Preserve the chosen asset's aspect ratio and
+transparency, never fetch a remote image as an implicit build dependency, and
+never infer branding from an unrelated dependency or template.
+
+When no suitable logo exists, presentation consumers use a deterministic monogram
+derived from the normalized product display name, with a stable semantic surface
+derived from the product identity. This is an honest fallback, not a generated
+brand claim. A cover may use a verified product screenshot tied to the exact
+candidate, or an explicit project-owned cover. Do not fabricate a screenshot,
+UI state, endorsement, or public availability merely to fill a card.
+
+For the v1 fallback, normalize the display name with Unicode NFKC and trim it.
+Split on whitespace, `.`, `_`, and `-`; for two or more non-empty segments use
+the first Unicode code point of the first two segments, otherwise use the first
+two code points of the normalized name. Apply locale-independent Unicode
+uppercase and fall back to `P` only for an empty result. For the visual tone,
+start at zero and, for each Unicode code point in the NFKC product id, compute
+`hash = (hash * 31 + codePoint) mod 3`; use tone `hash + 1`. Never derive it
+from time, randomness, current status, or host. Consumers map the three tones
+through their own semantic theme tokens.
+
+A verified screenshot must name the exact candidate/revision and retain its
+capture or acceptance evidence reference. Verification of package bytes alone
+does not prove screenshot provenance.
+
+The selected Web logo or cover may already live inside the declared
+`static-directory` artifact as ordinary application content. Product Package v1
+does not create a separate presentation artifact kind. An Agent must not invent a Product Package field or undeclared artifact
+for identity artwork. For mobile and local-runtime profiles, keep platform-native identity assets under their
+authoritative constructor and let presentation consumers use the fallback until
+a later version defines a verified cross-profile asset contract.
+
+The absence of a logo or cover does not invalidate Product Package v1. Report
+which source or fallback was selected in bounded construction evidence, not as
+a secret-bearing event and not as an end-user error.
+
 ## Root verification
 
 Run `package-verify` with the JSON descriptor stored outside the package root.

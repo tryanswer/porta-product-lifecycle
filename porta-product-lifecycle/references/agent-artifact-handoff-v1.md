@@ -19,24 +19,9 @@ deployment, Distribution, public link, cloud artifact, or cross-user message.
    the final regular file inside that exact directory. Never publish the source
    tree, a directory, a symlink, a credential, a raw log bundle, or a path
    outside the request directory.
-3. Verify the file locally and classify it before publishing:
-   - Up to 16 MiB, supported images, UTF-8 text/Markdown/JSON, and PDF may use
-     the bounded inline preview path.
-   - Images larger than 16 MiB and no larger than 256 MiB remain eligible for
-     Artifact Handoff. Porta must generate a bounded, native downsampled popup
-     preview while the Save action preserves and verifies the exact original
-     file. The preview derivative must never replace the saved original.
-     The App requests at most a 2048-pixel, 4-MiB JPEG derivative after the
-     receipt still identifies the original as `previewKind=image`. PNG and JPEG
-     are the portable baseline; other raster formats preview only when the
-     current native decoder supports them. If native decoding fails, report the
-     preview failure but keep the verified original Save action available.
-   - Non-image files larger than 16 MiB and no larger than 256 MiB remain
-     saveable but must not be loaded into the App WebView for inline preview.
-   - A file larger than 256 MiB is outside Artifact Handoff v1. Route it through
-     ordinary SFTP instead; do not publish it, embed it in chat, or manufacture
-     a public URL. Ordinary SFTP does not imply an Artifact Handoff popup or
-     Inbox record; describe the exact SFTP destination/action separately.
+3. Verify the file locally. It must be no larger than 32 MiB. Supported inline
+   previews are images, UTF-8 text/Markdown/JSON, and PDF; every accepted file
+   remains saveable even when inline preview is unsupported.
 4. Use the bundled client `artifact-publish` command with the exact cwd, file,
    request, Provider and Provider session. Choose `preview-now` when the user
    asked to see it now; choose `inbox` for durable Inbox delivery without a
@@ -55,9 +40,6 @@ deployment, Distribution, public link, cloud artifact, or cross-user message.
   full retention capacity, malformed receipt, or unsupported Provider fails
   closed. Do not fall back to embedding binary data in chat or publishing a
   public URL.
-- Treat the 16 MiB inline limit, 256 MiB original limit, and native preview
-  derivative as separate contracts. Raising a metadata limit never authorizes
-  loading the original large file into JavaScript or a WebView.
 - Never publish secrets, authentication exports, private keys, environment
   files, Provider transcripts, or an unreviewed diagnostic archive.
 - Do not claim phone receipt, preview, or save from the publish receipt. Those

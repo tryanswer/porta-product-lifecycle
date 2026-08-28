@@ -6,6 +6,9 @@ import { isAbsolute, join, posix, resolve, sep } from 'node:path'
 const MAX_SPEC_BYTES = 256 * 1024
 const MAX_PACKAGE_FILES = 4096
 const MAX_PACKAGE_BYTES = 512 * 1024 * 1024
+const MAX_PRESENTATION_BYTES = 512 * 1024
+const MAX_LOGO_BYTES = 128 * 1024
+const MAX_COVER_BYTES = 384 * 1024
 const ID_PATTERN = /^[a-z][a-z0-9._-]{2,127}$/
 const VERSION_PATTERN = /^[0-9A-Za-z][0-9A-Za-z._+-]{0,63}$/
 const SHA256_PATTERN = /^[a-f0-9]{64}$/
@@ -21,6 +24,7 @@ const DISTRIBUTION_CHANNELS = new Set([
   'google-play',
   'porta-web-release',
 ])
+const PRESENTATION_MEDIA_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
 
 export class ProductPackageValidationError extends Error {
   constructor(code, message) {
@@ -58,13 +62,22 @@ export function validateProductPackage(value) {
     'provenance',
     'schemaVersion',
     'validation',
-  ], ['deploymentTarget', 'distribution'], 'Product Package')
-  if (value.schemaVersion !== 1) fail('unsupported_schema_version', 'Product Package schemaVersion must be 1.')
+  ], ['deploymentTarget', 'distribution', 'presentation'], 'Product Package')
+  if (![1, 2].includes(value.schemaVersion)) fail('unsupported_schema_version', 'Product Package schemaVersion must be 1 or 2.')
+  if (value.schemaVersion === 1 && value.presentation !== undefined) {
+    fail('unsupported_presentation_contract', 'Product Package v1 cannot declare presentation assets.')
+  }
+  if (value.schemaVersion === 2 && value.presentation === undefined) {
+    fail('missing_presentation_contract', 'Product Package v2 requires a verified presentation contract.')
+  }
 
   const product = validateProduct(value.product)
   const descriptor = validateDescriptor(value.descriptor)
   const profile = validateProfile(value.profile)
   const artifacts = validateArtifacts(value.artifacts, profile)
+  const presentation = value.presentation === undefined
+    ? undefined
+    : validatePresentation(value.presentation, artifacts)
   const provenance = validateProvenance(value.provenance)
   const validation = validateValidation(value.validation)
   const deploymentTarget = value.deploymentTarget === undefined
@@ -79,16 +92,30 @@ export function validateProductPackage(value) {
     descriptor,
     ...(deploymentTarget ? { deploymentTarget } : {}),
     ...(distribution ? { distribution } : {}),
+    ...(presentation ? { presentation } : {}),
     product,
     profile,
     provenance,
-    schemaVersion: 1,
+    schemaVersion: value.schemaVersion,
     validation,
   }
   return {
     digest: createHash('sha256').update(canonicalJson(normalized)).digest('hex'),
     package: normalized,
   }
+}
+
+export function selectValidatedProductPackagePrimaryArtifact(productPackage) {
+  const primaryKind = productPackage?.profile?.kind === 'static-web'
+    ? 'static-directory'
+    : productPackage?.profile?.kind === 'mobile' ? 'mobile-package' : 'executable-file'
+  const primaryArtifacts = Array.isArray(productPackage?.artifacts)
+    ? productPackage.artifacts.filter((artifact) => artifact.kind === primaryKind)
+    : []
+  if (primaryArtifacts.length !== 1) {
+    fail('invalid_artifacts', `Product Package must contain exactly one ${primaryKind} primary artifact.`)
+  }
+  return primaryArtifacts[0]
 }
 
 export async function verifyProductPackageRoot(value, packageRoot) {
@@ -149,13 +176,9 @@ export async function verifyProductPackageRoot(value, packageRoot) {
     receipts.push(receipt)
   }
 
-  const primaryKind = validated.package.profile.kind === 'static-web'
-    ? 'static-directory'
-    : validated.package.profile.kind === 'mobile' ? 'mobile-package' : 'executable-file'
-  const primaryArtifacts = receipts.filter((artifact) => artifact.kind === primaryKind)
-  if (primaryArtifacts.length !== 1) {
-    fail('invalid_artifacts', `Product Package must contain exactly one ${primaryKind} primary artifact.`)
-  }
+  const primaryDeclaration = selectValidatedProductPackagePrimaryArtifact(validated.package)
+  const primaryArtifact = receipts.find(({ id }) => id === primaryDeclaration.id)
+  if (!primaryArtifact) fail('invalid_artifacts', 'Product Package primary artifact receipt is missing.')
 
   const finalEntries = await collectPackageEntries(root)
   if (entrySnapshot(finalEntries) !== entrySnapshot(entries)) {
@@ -167,16 +190,88 @@ export async function verifyProductPackageRoot(value, packageRoot) {
     materializationCandidate: {
       package: validated.package,
       packageDigest: validated.digest,
-      primaryArtifact: primaryArtifacts[0],
-      schemaVersion: 1,
+      primaryArtifact,
+      ...(validated.package.schemaVersion === 2 ? {
+        presentationAssets: await materializePresentationAssets(validated.package, receipts, root),
+      } : {}),
+      schemaVersion: validated.package.schemaVersion,
       type: 'porta-product-materialization-candidate',
-      version: 1,
+      version: validated.package.schemaVersion,
     },
     packageDigest: validated.digest,
     packageSchemaVersion: validated.package.schemaVersion,
     type: 'porta-product-package-verification',
     version: 1,
   }
+}
+
+function validatePresentation(value, artifacts) {
+  exactRecord(value, ['logo'], ['cover'], 'presentation')
+  const logo = validatePresentationRole(value.logo, 'logo', artifacts)
+  const cover = value.cover === undefined
+    ? undefined
+    : validatePresentationRole(value.cover, 'cover', artifacts)
+  if (cover?.artifactId === logo.artifactId) {
+    fail('invalid_presentation_contract', 'Logo and cover must use distinct presentation artifacts.')
+  }
+  return { ...(cover ? { cover } : {}), logo }
+}
+
+function validatePresentationRole(value, role, artifacts) {
+  exactRecord(value, ['artifactId'], [], `presentation.${role}`)
+  const artifactId = identifier(value.artifactId, `presentation.${role}.artifactId`)
+  const artifact = artifacts.find((candidate) => candidate.id === artifactId)
+  if (!artifact || artifact.kind !== 'presentation-file' || !PRESENTATION_MEDIA_TYPES.has(artifact.mediaType)) {
+    fail('invalid_presentation_contract', `presentation.${role} must reference a declared PNG, JPEG, or WebP presentation-file artifact.`)
+  }
+  const maximum = role === 'logo' ? MAX_LOGO_BYTES : MAX_COVER_BYTES
+  if (artifact.bytes > maximum) {
+    fail('oversized_presentation_asset', `presentation.${role} exceeds its card-ready byte limit.`)
+  }
+  return { artifactId }
+}
+
+async function materializePresentationAssets(productPackage, receipts, root) {
+  const roles = ['logo', 'cover'].filter((role) => productPackage.presentation[role])
+  const assets = []
+  let totalBytes = 0
+  for (const role of roles) {
+    const artifactId = productPackage.presentation[role].artifactId
+    const declaration = productPackage.artifacts.find((artifact) => artifact.id === artifactId)
+    const receipt = receipts.find((artifact) => artifact.id === artifactId)
+    if (!declaration || !receipt || receipt.kind !== 'presentation-file' || receipt.fileCount !== 1) {
+      fail('invalid_presentation_contract', `presentation.${role} verification receipt is unavailable.`)
+    }
+    const contents = await readRegularFileWithoutFollowing(join(root, ...receipt.path.split('/')), receipt.path)
+    if (!matchesPresentationMediaType(contents, declaration.mediaType)) {
+      fail('invalid_presentation_asset', `presentation.${role} bytes do not match ${declaration.mediaType}.`)
+    }
+    totalBytes += contents.length
+    if (totalBytes > MAX_PRESENTATION_BYTES) {
+      fail('oversized_presentation_asset', 'Combined card-ready presentation assets exceed 512 KiB.')
+    }
+    assets.push({
+      bytes: receipt.bytes,
+      contentBase64: contents.toString('base64'),
+      mediaType: declaration.mediaType,
+      path: receipt.path,
+      role,
+      sha256: receipt.sha256,
+    })
+  }
+  return assets
+}
+
+function matchesPresentationMediaType(contents, mediaType) {
+  if (mediaType === 'image/png') {
+    return contents.length >= 8 && contents.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+  }
+  if (mediaType === 'image/jpeg') {
+    return contents.length >= 3 && contents[0] === 0xff && contents[1] === 0xd8 && contents[2] === 0xff
+  }
+  return mediaType === 'image/webp' && contents.length >= 12 &&
+    contents.subarray(0, 4).toString('ascii') === 'RIFF' &&
+    contents.subarray(8, 12).toString('ascii') === 'WEBP'
 }
 
 function validateDescriptor(value) {
@@ -298,7 +393,7 @@ function validateArtifacts(value, profile) {
     const normalized = {
       bytes: positiveSafeInteger(artifact.bytes, `artifacts[${index}].bytes`),
       id: identifier(artifact.id, `artifacts[${index}].id`),
-      kind: enumText(artifact.kind, ['executable-file', 'mobile-package', 'static-directory'], `artifacts[${index}].kind`),
+      kind: enumText(artifact.kind, ['executable-file', 'mobile-package', 'presentation-file', 'static-directory'], `artifacts[${index}].kind`),
       ...(artifact.mediaType === undefined ? {} : { mediaType: boundedText(artifact.mediaType, 1, 128, `artifacts[${index}].mediaType`) }),
       path: relativePath(artifact.path, `artifacts[${index}].path`),
       sha256: patternText(artifact.sha256, SHA256_PATTERN, `artifacts[${index}].sha256`),
@@ -315,6 +410,11 @@ function validateArtifacts(value, profile) {
   }
   if (artifacts.filter((artifact) => artifact.kind === expectedPrimaryKind).length !== 1) {
     fail('incompatible_artifact', `${profile.kind} requires exactly one ${expectedPrimaryKind} primary artifact.`)
+  }
+  for (const artifact of artifacts.filter(({ kind }) => kind === 'presentation-file')) {
+    if (!artifact.mediaType || !PRESENTATION_MEDIA_TYPES.has(artifact.mediaType)) {
+      fail('invalid_presentation_contract', 'presentation-file artifacts require image/png, image/jpeg, or image/webp mediaType.')
+    }
   }
   rejectOverlappingArtifacts(artifacts)
   return artifacts
