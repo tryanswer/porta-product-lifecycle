@@ -50,3 +50,11 @@ test('new identity installs atomically and migrates legacy input without mixed o
   assert.match(migration.replace(/\s+/g, ' '), /New descriptors, client receipts, Scene claims, WorkRuns, package plans, and output types must use only the new identity/)
   assert.match(migration, /new client refuses old client-state identity\/version combinations/)
 })
+
+test('known one-file drift requires an explicit bounded repair transaction', async () => {
+  const activation = (await readFile(activationReferencePath, 'utf8')).replace(/\s+/g, ' ')
+  assert.match(activation, /repair source and target must name the same immutable release/i)
+  assert.match(activation, /one exact regular file path and the SHA-256 of its currently installed bytes/i)
+  assert.match(activation, /every other path, mode, and byte must still match the immutable release/i)
+  assert.match(activation, /does not authorize arbitrary installed content/i)
+})

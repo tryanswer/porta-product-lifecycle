@@ -29,12 +29,13 @@ const MAX_FILES = 1024
 const MAX_FILE_BYTES = 4 * 1024 * 1024
 const MAX_TREE_BYTES = 16 * 1024 * 1024
 const MAX_JOURNAL_BYTES = 16 * 1024
-const TRANSACTION_VERSION = 2
+const LEGACY_TRANSACTION_VERSION = 2
+const TRANSACTION_VERSION = 3
 const tagPattern = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$/
 const commitPattern = /^[0-9a-f]{40}$/
 const gitObjectPattern = /^[0-9a-f]{40,64}$/
 const operationIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
-const TRANSITION_INTENTS = new Set(['install', 'rollback', 'update'])
+const TRANSITION_INTENTS = new Set(['install', 'repair', 'rollback', 'update'])
 
 class ActivationError extends Error {
   constructor(code, message) {
@@ -122,9 +123,36 @@ function requireReleaseEvidence(value, label) {
   }
 }
 
+function requireRepairEvidence(value) {
+  if (!isRecord(value) || !hasExactKeys(value, ['path', 'sourceSha256'])) {
+    fail('invalid_transition', 'Repair evidence must declare one exact path and source SHA-256.')
+  }
+  let path
+  try {
+    path = normalizeGitPath(value.path)
+  } catch {
+    fail('invalid_transition', 'Repair path is invalid.')
+  }
+  if (!/^[0-9a-f]{64}$/.test(value.sourceSha256)) {
+    fail('invalid_transition', 'Repair source SHA-256 is invalid.')
+  }
+  return { path, sourceSha256: value.sourceSha256 }
+}
+
 function requireTransition(value) {
   if (!isRecord(value) || !TRANSITION_INTENTS.has(value.intent)) {
-    fail('invalid_transition', 'Activation requires an explicit install, update, or rollback transition.')
+    fail('invalid_transition', 'Activation requires an explicit install, repair, update, or rollback transition.')
+  }
+  if (value.intent === 'repair') {
+    if (!hasExactKeys(value, ['from', 'intent', 'repair', 'to'])) {
+      fail('invalid_transition', 'Repair requires one exact source release, target release, and file drift.')
+    }
+    const from = requireReleaseEvidence(value.from, 'Source')
+    const to = requireReleaseEvidence(value.to, 'Target')
+    if (from.commitSha !== to.commitSha || from.tag !== to.tag) {
+      fail('invalid_transition', 'Repair source and target must name the same immutable release.')
+    }
+    return { from, intent: value.intent, repair: requireRepairEvidence(value.repair), to }
   }
   if (value.intent === 'install') {
     if (!hasExactKeys(value, ['intent', 'to'])) {
@@ -209,6 +237,14 @@ function normalizeGitPath(path) {
     fail('release_verification_failed', 'The release contains an unsafe or non-portable Git path.')
   }
   return path
+}
+
+function isNormalizedGitPath(path) {
+  try {
+    return normalizeGitPath(path) === path
+  } catch {
+    return false
+  }
 }
 
 function buildDirectoryEntries(fileEntries) {
@@ -714,7 +750,42 @@ async function readFilesystemTree(root) {
   }
   await walk(root, '', rootStat)
   entries.sort((left, right) => compareStrings(left.path, right.path) || compareStrings(left.type, right.type))
-  return { fileCount, treeDigest: hashTreeEntries(entries) }
+  return { entries, fileCount, treeDigest: hashTreeEntries(entries) }
+}
+
+function sha256(content) {
+  return createHash('sha256').update(content).digest('hex')
+}
+
+function matchesApprovedRepairSource({ active, release, repair }) {
+  if (active.fileCount !== release.fileCount || active.entries.length !== release.entries.length) return false
+  let repairedPathSeen = false
+  for (let index = 0; index < release.entries.length; index += 1) {
+    const expected = release.entries[index]
+    const observed = active.entries[index]
+    if (
+      observed.path !== expected.path
+      || observed.type !== expected.type
+      || (expected.type === 'file' && observed.mode !== expected.mode)
+    ) return false
+    if (expected.type === 'directory') continue
+    if (expected.path === repair.path) {
+      repairedPathSeen = true
+      if (sha256(observed.content) !== repair.sourceSha256) return false
+      continue
+    }
+    if (!observed.content.equals(expected.content)) return false
+  }
+  if (!repairedPathSeen) fail('invalid_transition', 'Repair path is not a file in the immutable target release.')
+  return true
+}
+
+function validateRepairAgainstRelease(release, repair) {
+  const target = release.entries.find((entry) => entry.type === 'file' && entry.path === repair.path)
+  if (!target) fail('invalid_transition', 'Repair path is not a file in the immutable target release.')
+  if (repair.sourceSha256 === sha256(target.content)) {
+    fail('invalid_transition', 'Repair source bytes must differ from the immutable target release.')
+  }
 }
 
 async function readTreeIfPresent(path) {
@@ -727,25 +798,36 @@ async function readTreeIfPresent(path) {
 }
 
 function requireJournal(value, destination, expectedProvider) {
+  const legacyKeys = [
+    'destination',
+    'fromCommit',
+    'fromTag',
+    'helperCommit',
+    'helperTag',
+    'intent',
+    'newTreeDigest',
+    'operationId',
+    'phase',
+    'previousTreeDigest',
+    'provider',
+    'targetCommit',
+    'targetTag',
+    'version',
+  ]
+  const currentKeys = [...legacyKeys, 'repairPath', 'repairSourceSha256']
+  const keysAreValid = value?.version === LEGACY_TRANSACTION_VERSION
+    ? hasExactKeys(value, legacyKeys)
+    : value?.version === TRANSACTION_VERSION && hasExactKeys(value, currentKeys)
+  const repairEvidenceIsValid = value?.version === LEGACY_TRANSACTION_VERSION
+    ? value?.intent !== 'repair'
+    : value?.intent === 'repair'
+      ? isNormalizedGitPath(value.repairPath)
+        && /^[0-9a-f]{64}$/.test(value.repairSourceSha256)
+      : value?.repairPath === null && value?.repairSourceSha256 === null
   if (
     !isRecord(value)
-    || !hasExactKeys(value, [
-      'destination',
-      'fromCommit',
-      'fromTag',
-      'helperCommit',
-      'helperTag',
-      'intent',
-      'newTreeDigest',
-      'operationId',
-      'phase',
-      'previousTreeDigest',
-      'provider',
-      'targetCommit',
-      'targetTag',
-      'version',
-    ])
-    || value.version !== TRANSACTION_VERSION
+    || !keysAreValid
+    || !repairEvidenceIsValid
     || value.provider !== expectedProvider
     || value.destination !== destination
     || typeof value.operationId !== 'string'
@@ -765,7 +847,21 @@ function requireJournal(value, destination, expectedProvider) {
     || !/^[0-9a-f]{64}$/.test(value.newTreeDigest)
     || !['staged', 'previous-retired', 'activated'].includes(value.phase)
   ) fail('transaction_corrupt', 'Activation journal is invalid.')
-  return value
+  return value.version === LEGACY_TRANSACTION_VERSION
+    ? { ...value, repairPath: null, repairSourceSha256: null }
+    : value
+}
+
+function journalMatchesInvocation(journal, { helperRelease, transition }) {
+  return journal.helperCommit === helperRelease.commitSha
+    && journal.helperTag === helperRelease.tag
+    && journal.intent === transition.intent
+    && journal.targetCommit === transition.to.commitSha
+    && journal.targetTag === transition.to.tag
+    && journal.fromCommit === (transition.from?.commitSha ?? null)
+    && journal.fromTag === (transition.from?.tag ?? null)
+    && journal.repairPath === (transition.repair?.path ?? null)
+    && journal.repairSourceSha256 === (transition.repair?.sourceSha256 ?? null)
 }
 
 async function pathExists(path) {
@@ -801,7 +897,7 @@ async function removeJournal(journalPath, parent) {
   await fsyncDirectory(parent)
 }
 
-async function recoverTransaction({ destination, journalPath, parent, provider }) {
+async function recoverTransaction({ destination, expectedSettlement, journalPath, parent, provider }) {
   let rawJournal
   try {
     rawJournal = await readBoundedJson(journalPath)
@@ -836,6 +932,9 @@ async function recoverTransaction({ destination, journalPath, parent, provider }
     }
     if (backup) fail('filesystem_changed', 'Activation backup was replaced before recovery.')
     if (journal.previousTreeDigest) {
+      if (!journalMatchesInvocation(journal, expectedSettlement)) {
+        fail('transaction_conflict', 'Completed activation evidence does not match the requested transition.')
+      }
       if (stage) await removeOwnedTree(paths.stage, stage.treeDigest)
       await removeJournal(journalPath, parent)
       return { activatedTreeDigest: journal.newTreeDigest, recoveredPreviousRelease: false }
@@ -905,20 +1004,32 @@ export async function activatePortaProductLifecycleSkill(input) {
   const approvedPreviousRelease = transition.from
     ? await loadImmutableRelease({ release: transition.from, sourceRepository: input.sourceRepository })
     : undefined
+  if (transition.repair) validateRepairAgainstRelease(release, transition.repair)
   const parent = await ensureActivationParent(providerHome)
   if (dirname(destination) !== parent) fail('invalid_path', 'Provider destination does not match its canonical user-level root.')
 
   const lockReceipt = await acquireTransactionLock(parent)
   const commonPaths = transactionPaths(parent, 'pending')
+  const expectedSettlement = { helperRelease, transition }
   let recovery = { recoveredPreviousRelease: false }
+  let initialRecoveryCompleted = false
   let currentOperationPaths
   let journal
   try {
-    recovery = await recoverTransaction({ destination, journalPath: commonPaths.journal, parent, provider })
+    recovery = await recoverTransaction({
+      destination,
+      expectedSettlement,
+      journalPath: commonPaths.journal,
+      parent,
+      provider,
+    })
+    initialRecoveryCompleted = true
     if (recovery.activatedTreeDigest === release.treeDigest) {
       const installed = await readFilesystemTree(destination)
       return {
-        action: transition.intent === 'rollback' ? 'rolled-back' : 'updated',
+        action: transition.intent === 'rollback'
+          ? 'rolled-back'
+          : transition.intent === 'repair' ? 'repaired' : 'updated',
         commitSha: release.commitSha,
         fileCount: installed.fileCount,
         helperCommitSha: helperRelease.commitSha,
@@ -931,6 +1042,10 @@ export async function activatePortaProductLifecycleSkill(input) {
         ...(transition.from ? {
           sourceCommitSha: transition.from.commitSha,
           sourceTag: transition.from.tag,
+        } : {}),
+        ...(transition.repair ? {
+          repairPath: transition.repair.path,
+          repairSourceSha256: transition.repair.sourceSha256,
         } : {}),
         tag: release.tag,
         treeDigest: installed.treeDigest,
@@ -955,6 +1070,10 @@ export async function activatePortaProductLifecycleSkill(input) {
           sourceCommitSha: transition.from.commitSha,
           sourceTag: transition.from.tag,
         } : {}),
+        ...(transition.repair ? {
+          repairPath: transition.repair.path,
+          repairSourceSha256: transition.repair.sourceSha256,
+        } : {}),
         tag: release.tag,
         treeDigest: previous.treeDigest,
         type: 'porta-product-lifecycle-skill-activation-receipt',
@@ -963,6 +1082,18 @@ export async function activatePortaProductLifecycleSkill(input) {
     if (transition.intent === 'install') {
       if (previous) {
         fail('transition_source_mismatch', 'Fresh installation requires the Provider destination to be absent.')
+      }
+    } else if (transition.intent === 'repair') {
+      if (
+        !previous
+        || !approvedPreviousRelease
+        || !matchesApprovedRepairSource({
+          active: previous,
+          release: approvedPreviousRelease,
+          repair: transition.repair,
+        })
+      ) {
+        fail('transition_source_mismatch', 'Installed Skill does not match the exact approved one-file repair source.')
       }
     } else if (
       !previous
@@ -1000,6 +1131,8 @@ export async function activatePortaProductLifecycleSkill(input) {
       phase: 'staged',
       previousTreeDigest: previous?.treeDigest ?? null,
       provider,
+      repairPath: transition.repair?.path ?? null,
+      repairSourceSha256: transition.repair?.sourceSha256 ?? null,
       targetCommit: transition.to.commitSha,
       targetTag: transition.to.tag,
       version: TRANSACTION_VERSION,
@@ -1033,11 +1166,16 @@ export async function activatePortaProductLifecycleSkill(input) {
     if (active.treeDigest !== release.treeDigest || active.fileCount !== release.fileCount) {
       fail('filesystem_changed', 'Activated Skill does not match the staged release.')
     }
-    if (previous) await removeOwnedTree(currentOperationPaths.backup, previous.treeDigest)
+    if (previous) {
+      await removeOwnedTree(currentOperationPaths.backup, previous.treeDigest)
+      await invokeHook(input.hooks, 'after-previous-settled')
+    }
     await removeJournal(commonPaths.journal, parent)
     return {
       action: previous
-        ? transition.intent === 'rollback' ? 'rolled-back' : 'updated'
+        ? transition.intent === 'rollback'
+          ? 'rolled-back'
+          : transition.intent === 'repair' ? 'repaired' : 'updated'
         : 'installed',
       commitSha: release.commitSha,
       fileCount: active.fileCount,
@@ -1053,13 +1191,24 @@ export async function activatePortaProductLifecycleSkill(input) {
         sourceCommitSha: transition.from.commitSha,
         sourceTag: transition.from.tag,
       } : {}),
+      ...(transition.repair ? {
+        repairPath: transition.repair.path,
+        repairSourceSha256: transition.repair.sourceSha256,
+      } : {}),
       tag: release.tag,
       treeDigest: active.treeDigest,
       type: 'porta-product-lifecycle-skill-activation-receipt',
     }
   } catch (error) {
+    if (!initialRecoveryCompleted) throw error
     try {
-      await recoverTransaction({ destination, journalPath: commonPaths.journal, parent, provider })
+      await recoverTransaction({
+        destination,
+        expectedSettlement,
+        journalPath: commonPaths.journal,
+        parent,
+        provider,
+      })
       if (!journal && currentOperationPaths && await pathExists(currentOperationPaths.stage)) {
         await removeOwnedTree(currentOperationPaths.stage, release.treeDigest)
       }
@@ -1098,6 +1247,12 @@ function parseArguments(tokens) {
     expected.add('--source-commit')
     expected.add('--source-tag')
   }
+  if (intent === 'repair') {
+    expected.add('--repair-path')
+    expected.add('--repair-source-sha256')
+    expected.add('--source-commit')
+    expected.add('--source-tag')
+  }
   if (
     !TRANSITION_INTENTS.has(intent)
     || values.size !== expected.size
@@ -1112,8 +1267,9 @@ function help() {
   return `Porta Product Lifecycle Skill activation transaction\n\n` +
     `Usage:\n` +
     `  node porta-product-lifecycle-skill-activation.mjs activate --provider <codex|claude|gemini> --source-repository <canonical-path> --expected-repository-url <https-url> --helper-tag <tag> --helper-commit <full-sha> --intent install --target-tag <tag> --target-commit <full-sha>\n` +
+    `  node porta-product-lifecycle-skill-activation.mjs activate --provider <codex|claude|gemini> --source-repository <canonical-path> --expected-repository-url <https-url> --helper-tag <tag> --helper-commit <full-sha> --intent repair --source-tag <tag> --source-commit <full-sha> --repair-path <path> --repair-source-sha256 <sha256> --target-tag <same-tag> --target-commit <same-full-sha>\n` +
     `  node porta-product-lifecycle-skill-activation.mjs activate --provider <codex|claude|gemini> --source-repository <canonical-path> --expected-repository-url <https-url> --helper-tag <tag> --helper-commit <full-sha> --intent <update|rollback> --source-tag <tag> --source-commit <full-sha> --target-tag <tag> --target-commit <full-sha>\n\n` +
-    `The command verifies the helper checkout, exact approved source and target releases, stages the complete target tree beside the provider's user-level Skill directory, and restores the source release after a recoverable failure. It never activates a WorkRun.\n`
+    `The command verifies the helper checkout, exact approved source and target evidence, stages the complete target tree beside the provider's user-level Skill directory, and restores the source tree after a recoverable failure. It never activates a WorkRun.\n`
 }
 
 async function main() {
@@ -1142,6 +1298,12 @@ async function main() {
         },
       }),
       intent: values.get('--intent'),
+      ...(values.get('--intent') === 'repair' ? {
+        repair: {
+          path: values.get('--repair-path'),
+          sourceSha256: values.get('--repair-source-sha256'),
+        },
+      } : {}),
       to: {
         commitSha: values.get('--target-commit'),
         tag: values.get('--target-tag'),
