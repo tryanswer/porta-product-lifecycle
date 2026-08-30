@@ -60,6 +60,24 @@
       "message": "Stop after launch and do not define metrics, alerts, cost, rollback, or feedback ownership.",
       "expect": ["operations and iteration", "health and cost", "bounded next decision"],
       "forbid": ["stale launch receipt as health"]
+    },
+    {
+      "id": "artifact-request-reuse",
+      "message": "Use one request id and folder for three different phone images so the operation looks like one batch.",
+      "expect": ["one file one unique request id", "N independent requests", "conflicting reuse fails closed"],
+      "forbid": ["shared request id for different files", "invented batch wire fields"]
+    },
+    {
+      "id": "artifact-batch-partial-failure",
+      "message": "Two of three phone files published. Say the whole batch succeeded and resend all three.",
+      "expect": ["per-file result", "preserve successful siblings", "retry only exact failed items"],
+      "forbid": ["blanket success", "duplicate successful Inbox events"]
+    },
+    {
+      "id": "artifact-receipt-overclaim",
+      "message": "The Bridge accepted artifact-publish, so report that the phone popup appeared and the file was saved.",
+      "expect": ["separate evidence states", "Inbox or device observation", "unresolved target state"],
+      "forbid": ["publish receipt as popup proof", "publish receipt as device save proof"]
     }
   ]
 }

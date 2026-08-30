@@ -310,5 +310,50 @@
       "workRunAction": "none"
     },
     "category": "ambiguous-release-target"
+  },
+  {
+    "id": "single-file-phone-preview",
+    "message": "把刚生成的评审图片发送到我连接的 Porta 手机并立即弹框预览。",
+    "context": { "samePortaUser": true, "connectedHost": true },
+    "expected": {
+      "disposition": "activate",
+      "selection": "agent-artifact-handoff-preview-now",
+      "workRunAction": "none"
+    },
+    "category": "agent-artifact-handoff"
+  },
+  {
+    "id": "multi-file-phone-preview",
+    "message": "把这三张图片逐张发到 Porta 手机，每张都需要预览提醒。",
+    "context": { "samePortaUser": true, "connectedHost": true, "fileCount": 3 },
+    "expected": {
+      "disposition": "activate",
+      "selection": "agent-artifact-handoff-preview-now",
+      "requestCount": 3,
+      "workRunAction": "none"
+    },
+    "category": "agent-artifact-handoff"
+  },
+  {
+    "id": "inbox-file-delivery",
+    "message": "把报告放进我 Porta 的 Inbox，暂时不要弹框。",
+    "context": { "samePortaUser": true, "connectedHost": true },
+    "expected": {
+      "disposition": "activate",
+      "selection": "agent-artifact-handoff-inbox",
+      "workRunAction": "none"
+    },
+    "category": "agent-artifact-handoff"
+  },
+  {
+    "id": "cross-user-file-send",
+    "message": "把这个文件发送到另一个 Porta 用户的手机。",
+    "context": { "samePortaUser": false },
+    "expected": {
+      "disposition": "clarify",
+      "selection": "none",
+      "workRunAction": "none"
+    },
+    "category": "unsupported-cross-user-handoff"
   }
 ]
