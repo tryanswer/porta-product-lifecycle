@@ -7,6 +7,8 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
+import { writePackageRouteReceipt } from './helpers/lifecycle-route-fixture.mjs'
+
 import {
   ProductPackageValidationError,
   verifyProductPackageRoot,
@@ -201,7 +203,11 @@ test('CLI verifies a local-runtime file but never executes its declared command'
     }
     const specPath = join(fixtureRoot, 'descriptor.json')
     await writeFile(specPath, JSON.stringify(spec))
-    const result = spawnSync(process.execPath, [clientPath, 'package-verify', '--spec', specPath, '--package-root', root], { encoding: 'utf8' })
+    const routeReceipt = writePackageRouteReceipt(fixtureRoot)
+    const result = spawnSync(process.execPath, [
+      clientPath, 'package-verify', '--spec', specPath, '--package-root', root,
+      '--route-receipt', routeReceipt,
+    ], { encoding: 'utf8' })
     assert.equal(result.status, 0, result.stderr)
     assert.equal(JSON.parse(result.stdout).receipt.artifacts[0].sha256, sha(contents))
     await assert.rejects(access(marker), /ENOENT/)

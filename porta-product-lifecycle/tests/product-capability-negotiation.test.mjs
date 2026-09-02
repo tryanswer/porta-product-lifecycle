@@ -7,6 +7,8 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
+import { writePackageRouteReceipt } from './helpers/lifecycle-route-fixture.mjs'
+
 import {
   ProductCapabilityNegotiationError,
   negotiateProductCapabilities,
@@ -303,7 +305,10 @@ test('exposes negotiation as a read-only client command', () => {
   try {
     const spec = join(root, 'request.json')
     writeFileSync(spec, JSON.stringify(request()))
-    const run = spawnSync(process.execPath, [clientPath, 'capability-negotiate', '--spec', spec], {
+    const routeReceipt = writePackageRouteReceipt(root)
+    const run = spawnSync(process.execPath, [
+      clientPath, 'capability-negotiate', '--spec', spec, '--route-receipt', routeReceipt,
+    ], {
       encoding: 'utf8',
     })
     assert.equal(run.status, 0, run.stderr)
@@ -317,7 +322,9 @@ test('exposes negotiation as a read-only client command', () => {
     const unsupported = request()
     unsupported.manifest.capabilityVersion = '2.0.0'
     writeFileSync(spec, JSON.stringify(unsupported))
-    const rejected = spawnSync(process.execPath, [clientPath, 'capability-negotiate', '--spec', spec], {
+    const rejected = spawnSync(process.execPath, [
+      clientPath, 'capability-negotiate', '--spec', spec, '--route-receipt', routeReceipt,
+    ], {
       encoding: 'utf8',
     })
     assert.equal(rejected.status, 1)

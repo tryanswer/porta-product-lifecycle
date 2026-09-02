@@ -20,7 +20,7 @@ The v1 input contains exactly:
 - `schemaVersion`: integer `1`;
 - `outcome`: one of `define`, `develop`, `verify`, `package`, `preview`,
   `materialize-private`, `deploy`, `distribute`, `operate`, `inspect-run`,
-  `cancel-run`, `artifact-handoff`, or `skill-install`;
+  `resume-run`, `cancel-run`, `artifact-handoff`, or `skill-install`;
 - `object`: exact `{kind, ref}` where kind is `product`, `run`, `artifact`, or
   `skill` and ref is a bounded opaque value or `null`;
 - `target`: exact `{kind, ref, source}` where kind is `none`, `unknown`,
@@ -61,9 +61,11 @@ WorkRun policy, reason code, and SHA-256 `routeDigest`. Validation performs both
    equal the planner's current output.
 
 Recomputing a digest over a manually altered owner or command set is therefore
-insufficient. `route-check` also requires the exact allowed client command and,
-when present, the exact Run key. Bridge/provider admission remains the security
-boundary because route receipts are local and unsigned.
+insufficient. Every phase client command requires `--route-receipt`; the client
+checks the exact allowed command and, when present, exact Run key before phase
+logic executes. `route-check` exposes the same check without running the phase.
+Bridge/provider admission remains the security boundary because route receipts
+are local and unsigned.
 
 ## Invariants
 

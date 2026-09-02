@@ -12,7 +12,8 @@ Bridge Runtime `1.16.6` or newer must advertise
 Work, registration, and status operations. The client discovers the managed
 `~/.porta/bin/porta-bridge` launcher before PATH.
 
-Create and retain one Run key, then register the exact verified package:
+Create and retain one Run key, settle a `deploy` route for that same key and
+the exact local target, then register the exact verified package:
 
 ```text
 node <skill-directory>/scripts/porta-product-lifecycle.mjs new-run-key
@@ -22,7 +23,8 @@ node <skill-directory>/scripts/porta-product-lifecycle.mjs local-release-registe
   --package-root <absolute-package-root> \
   --provider <codex|claude|gemini> \
   --provider-session-id <exact-current-session-id> \
-  --cwd <exact-project-root>
+  --cwd <exact-project-root> \
+  --route-receipt <deploy-route-receipt.json>
 ```
 
 The client re-verifies actual package bytes before mutation, writes one private
@@ -42,7 +44,8 @@ back, and settles it through Bridge. Check the same operation:
 
 ```text
 node <skill-directory>/scripts/porta-product-lifecycle.mjs local-release-status \
-  --run-key <same-key>
+  --run-key <same-key> \
+  --route-receipt <deploy-or-resume-route-receipt.json>
 ```
 
 Only an exact `local-ready` response whose Package and primary artifact digests

@@ -147,12 +147,20 @@ Record the returned Run key before `begin`; do not hide it in command
 substitution. Use the real current provider. Add `--provider-session-id` only
 when the runtime exposes an exact stable ID.
 
+Settle and persist a `distribute` route for the exact Product, trusted
+`porta-web` target, current explicit publication intent, and that same Run key.
+Every phase command below must carry the unchanged receipt through
+`--route-receipt "$ROUTE_RECEIPT"`. A later user request to continue the same
+Run requires a new `resume-run` receipt for the retained key; it never permits
+a replacement Run.
+
 ```bash
 node "$CLIENT" begin \
   --workflow-protocol-version 2 \
   --cwd "$(pwd -P)" \
   --provider codex \
-  --run-key "run_00000000-0000-4000-8000-000000000000"
+  --run-key "run_00000000-0000-4000-8000-000000000000" \
+  --route-receipt "$ROUTE_RECEIPT"
 ```
 
 Call begin before modifying product source or build output; the client's
@@ -196,7 +204,8 @@ actually begins:
 ```bash
 node "$CLIENT" preview-start \
   --run-key "$RUN_KEY" \
-  --operation-key "preview-start-1"
+  --operation-key "preview-start-1" \
+  --route-receipt "$ROUTE_RECEIPT"
 ```
 
 Use the project's own safe lifecycle mechanism for a browser preview. Before
@@ -241,10 +250,11 @@ invent them. Web artifact `id`, `name`, `type`, `scheme`, `remoteHost`,
 client:
 
 ```bash
-node "$CLIENT" manifest --run-key "$RUN_KEY" --spec "/path/to/spec.json"
+node "$CLIENT" manifest --run-key "$RUN_KEY" --spec "/path/to/spec.json" --route-receipt "$ROUTE_RECEIPT"
 node "$CLIENT" preview-ready \
   --run-key "$RUN_KEY" \
-  --operation-key "preview-ready-1"
+  --operation-key "preview-ready-1" \
+  --route-receipt "$ROUTE_RECEIPT"
 ```
 
 **Preview Ready is nonterminal**. It only proves the mutable preview milestone;
@@ -269,7 +279,8 @@ node "$CLIENT" candidate-register \
   --output-root "dist" \
   --entry-path "index.html" \
   --display-name "Requested product" \
-  --spa-fallback 1
+  --spa-fallback 1 \
+  --route-receipt "$ROUTE_RECEIPT"
 ```
 
 Bridge—not the Skill—walks and freezes the candidate. A symlink, hardlink,
@@ -314,7 +325,7 @@ and let the Agent exit. When the user or current task explicitly needs a later
 snapshot, make one bounded authoritative read:
 
 ```bash
-node "$CLIENT" release-status --run-key "$RUN_KEY"
+node "$CLIENT" release-status --run-key "$RUN_KEY" --route-receipt "$ROUTE_RECEIPT"
 ```
 
 Do not poll. This command filters the Bridge pull to the exact retained
@@ -327,7 +338,8 @@ For an implementation or safe-candidate failure, use a stable reason code:
 ```bash
 node "$CLIENT" fail \
   --run-key "$RUN_KEY" \
-  --reason-code "candidate_validation_failed"
+  --reason-code "candidate_validation_failed" \
+  --route-receipt "$ROUTE_RECEIPT"
 ```
 
 Keep diagnostic detail in the log and terminal response. If local
@@ -339,7 +351,7 @@ user cancellation.
 For an explicit cancellation request:
 
 ```bash
-node "$CLIENT" cancel --run-key "$RUN_KEY"
+node "$CLIENT" cancel --run-key "$RUN_KEY" --route-receipt "$ROUTE_RECEIPT"
 ```
 
 Cancel targets only the exact retained WorkRun. Before cloud handoff, Bridge

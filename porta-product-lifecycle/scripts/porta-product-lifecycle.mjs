@@ -49,7 +49,7 @@ const MINIMUM_LEGACY_WORKFLOW_RUNTIME = '1.9.0'
 const MINIMUM_RELEASE_WORKFLOW_RUNTIME = '1.14.0'
 const MINIMUM_SCENE_PACK_READINESS_RUNTIME = '1.16.1'
 const MINIMUM_LOCAL_PRODUCT_RELEASE_RUNTIME = '1.16.6'
-const MINIMUM_AGENT_ARTIFACT_RUNTIME = '1.17.7'
+const MINIMUM_AGENT_ARTIFACT_RUNTIME = '1.17.8'
 const SKILL_ID = 'porta-product-lifecycle'
 const SKILL_VERSION = '1.1.0'
 const COMPATIBLE_STATE_SKILL_VERSIONS = new Set(['1.0.0', '1.0.1', '1.0.2', '1.0.3', '1.0.4', '1.0.5', '1.0.6', '1.0.7', SKILL_VERSION])
@@ -79,6 +79,30 @@ const releaseProgressPhases = new Set([
   'verifying',
 ])
 const terminalOutcomes = new Set(['failed', 'unsupported'])
+const routeGatedCommands = new Set([
+  'attention',
+  'begin',
+  'build-execution-plan',
+  'cancel',
+  'candidate-register',
+  'capability-negotiate',
+  'fail',
+  'lifecycle-plan',
+  'local-release-register',
+  'local-release-status',
+  'manifest',
+  'package-validate',
+  'package-verify',
+  'preview-ready',
+  'preview-start',
+  'private-product-register',
+  'private-product-status',
+  'progress',
+  'ready',
+  'release-status',
+  'show',
+  'stop',
+])
 const runKeyPattern = /^run_[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const operationKeyPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$/
 const reasonCodePattern = /^[a-z][a-z0-9._:-]{0,119}$/
@@ -95,7 +119,8 @@ class ClientError extends Error {
 }
 
 async function main() {
-  const [command, ...tokens] = process.argv.slice(2)
+  const [command, ...rawTokens] = process.argv.slice(2)
+  let tokens = rawTokens
   if (!command || command === '--help' || command === 'help') {
     process.stdout.write(helpText())
     return
@@ -148,6 +173,7 @@ async function main() {
     await publishAgentArtifact(tokens)
     return
   }
+  tokens = await authorizeLifecycleCommand(command, tokens)
   if (command === 'package-validate') {
     const options = parseOptions(tokens, ['spec'])
     const result = await readProductPackage(options.spec)
@@ -255,27 +281,58 @@ async function main() {
   throw new ClientError('unsupported_command', `Unsupported Porta Product Lifecycle client command: ${command}`)
 }
 
+async function authorizeLifecycleCommand(command, tokens) {
+  if (!routeGatedCommands.has(command)) return tokens
+  let receiptPath
+  const remaining = []
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index]
+    if (token !== '--route-receipt') {
+      remaining.push(token)
+      continue
+    }
+    if (receiptPath !== undefined || index + 1 >= tokens.length || tokens[index + 1].startsWith('--')) {
+      throw new ClientError('invalid_arguments', '--route-receipt must be provided exactly once with a file path.')
+    }
+    receiptPath = tokens[index + 1]
+    index += 1
+  }
+  if (!receiptPath) {
+    throw new ClientError(
+      'route_receipt_required',
+      `${command} requires a deterministic Lifecycle route receipt. Run route-plan first.`,
+    )
+  }
+  const runKeyIndex = remaining.indexOf('--run-key')
+  const runKey = runKeyIndex >= 0 && runKeyIndex + 1 < remaining.length
+    ? remaining[runKeyIndex + 1]
+    : null
+  await readAndCheckLifecycleRoute(receiptPath, command, runKey)
+  return remaining
+}
+
 function helpText() {
   return `Porta Product Lifecycle client ${SKILL_VERSION}\n\n` +
     `Lifecycle route (read-only; settles one phase owner and never starts a WorkRun):\n` +
     `  porta-product-lifecycle.mjs route-plan --spec <json-file> [--out <route-receipt.json>]\n` +
-    `  porta-product-lifecycle.mjs route-check --receipt <route-receipt.json> --command <client-command> [--run-key <run-key>]\n\n` +
+    `  porta-product-lifecycle.mjs route-check --receipt <route-receipt.json> --command <client-command> [--run-key <run-key>]\n` +
+    `  Every allowed phase command below requires --route-receipt <route-receipt.json>.\n\n` +
     `Build execution plan (GitHub is optional; planning never reads source or starts a WorkRun):\n` +
-    `  porta-product-lifecycle.mjs build-execution-plan --spec <json-file>\n\n` +
+    `  porta-product-lifecycle.mjs build-execution-plan --spec <json-file> --route-receipt <package-route-receipt.json>\n\n` +
     `Product Package (validation never starts a WorkRun):\n` +
-    `  porta-product-lifecycle.mjs package-validate --spec <json-file>\n\n` +
+    `  porta-product-lifecycle.mjs package-validate --spec <json-file> --route-receipt <package-route-receipt.json>\n\n` +
     `Product Capability negotiation (read-only; never activates capabilities or starts a WorkRun):\n` +
-    `  porta-product-lifecycle.mjs capability-negotiate --spec <json-file>\n\n` +
+    `  porta-product-lifecycle.mjs capability-negotiate --spec <json-file> --route-receipt <package-route-receipt.json>\n\n` +
     `Product Package root readback (verification never executes an entrypoint):\n` +
-    `  porta-product-lifecycle.mjs package-verify --spec <json-file> --package-root <absolute-path>\n\n` +
+    `  porta-product-lifecycle.mjs package-verify --spec <json-file> --package-root <absolute-path> --route-receipt <package-route-receipt.json>\n\n` +
     `Lifecycle plan (planning never starts a WorkRun):\n` +
-    `  porta-product-lifecycle.mjs lifecycle-plan --spec <json-file>\n\n` +
+    `  porta-product-lifecycle.mjs lifecycle-plan --spec <json-file> --route-receipt <package-route-receipt.json>\n\n` +
     `Porta Local Product Release (non-publish Product Work; never Web Release):\n` +
-    `  porta-product-lifecycle.mjs local-release-register --run-key <key> --spec <json-file> --package-root <absolute-path> --provider <codex|claude|gemini> --provider-session-id <id> [--cwd <path>]\n` +
-    `  porta-product-lifecycle.mjs local-release-status --run-key <key>\n\n` +
+    `  porta-product-lifecycle.mjs local-release-register --run-key <key> --spec <json-file> --package-root <absolute-path> --provider <codex|claude|gemini> --provider-session-id <id> --route-receipt <deploy-route-receipt.json> [--cwd <path>]\n` +
+    `  porta-product-lifecycle.mjs local-release-status --run-key <key> --route-receipt <deploy-or-resume-route-receipt.json>\n\n` +
     `Porta Private Product (non-publish durable Product/Revision; never deploys or distributes):\n` +
-    `  porta-product-lifecycle.mjs private-product-register --run-key <key> --spec <json-file> --package-root <absolute-path> --provider <codex|claude|gemini> --provider-session-id <id> [--cwd <path>]\n` +
-    `  porta-product-lifecycle.mjs private-product-status --run-key <key>\n\n` +
+    `  porta-product-lifecycle.mjs private-product-register --run-key <key> --spec <json-file> --package-root <absolute-path> --provider <codex|claude|gemini> --provider-session-id <id> --route-receipt <private-route-receipt.json> [--cwd <path>]\n` +
+    `  porta-product-lifecycle.mjs private-product-status --run-key <key> --route-receipt <private-or-resume-route-receipt.json>\n\n` +
     `Scene Pack readiness (Agent-observed UX signal; dedupe/LKG only; no WorkRun or publish authority):\n` +
     `  porta-product-lifecycle.mjs scene-pack-readiness-observe --spec <json-file>\n\n` +
     `Agent Artifact Handoff (local-first presentation; no WorkRun, deploy, distribution, or cloud upload):\n` +
@@ -283,23 +340,23 @@ function helpText() {
     `Workflow v2 Static HTML publication (the version selector is required):\n` +
     `  porta-product-lifecycle.mjs capabilities --workflow-protocol-version 2\n` +
     `  porta-product-lifecycle.mjs new-run-key\n` +
-    `  porta-product-lifecycle.mjs begin --workflow-protocol-version 2 --run-key <key> --provider <codex|claude|gemini> [--provider-session-id <id>] [--cwd <path>]\n` +
-    `  porta-product-lifecycle.mjs show --run-key <key> [--cwd <path>]\n` +
-    `  porta-product-lifecycle.mjs progress --run-key <key> --operation-key <key> --phase <phase> [--percent <0-100>] [--summary <text>] [--cwd <path>]\n` +
-    `  porta-product-lifecycle.mjs preview-start --run-key <key> --operation-key <key> [--cwd <path>]\n` +
-    `  porta-product-lifecycle.mjs attention --run-key <key> --operation-key <key> --reason-code <code> [--cwd <path>]\n` +
-    `  porta-product-lifecycle.mjs manifest --run-key <key> --spec <json-file> [--cwd <path>]\n` +
-    `  porta-product-lifecycle.mjs preview-ready --run-key <key> --operation-key <key> [--cwd <path>]  # nonterminal\n` +
-    `  porta-product-lifecycle.mjs candidate-register --run-key <key> --operation-key <key> --output-root <path> --entry-path <path> --display-name <name> --spa-fallback <0|1> [--cwd <path>]\n` +
-    `  porta-product-lifecycle.mjs release-status --run-key <key> [--cwd <path>]\n` +
-    `  porta-product-lifecycle.mjs cancel --run-key <key> [--cwd <path>]\n` +
-    `  porta-product-lifecycle.mjs fail --run-key <key> --reason-code <code> [--cwd <path>]\n\n` +
+    `  porta-product-lifecycle.mjs begin --workflow-protocol-version 2 --run-key <key> --provider <codex|claude|gemini> --route-receipt <distribute-route-receipt.json> [--provider-session-id <id>] [--cwd <path>]\n` +
+    `  porta-product-lifecycle.mjs show --run-key <key> --route-receipt <distribute-or-resume-route-receipt.json> [--cwd <path>]\n` +
+    `  porta-product-lifecycle.mjs progress --run-key <key> --operation-key <key> --phase <phase> --route-receipt <distribute-or-resume-route-receipt.json> [--percent <0-100>] [--summary <text>] [--cwd <path>]\n` +
+    `  porta-product-lifecycle.mjs preview-start --run-key <key> --operation-key <key> --route-receipt <distribute-or-resume-route-receipt.json> [--cwd <path>]\n` +
+    `  porta-product-lifecycle.mjs attention --run-key <key> --operation-key <key> --reason-code <code> --route-receipt <distribute-or-resume-route-receipt.json> [--cwd <path>]\n` +
+    `  porta-product-lifecycle.mjs manifest --run-key <key> --spec <json-file> --route-receipt <distribute-or-resume-route-receipt.json> [--cwd <path>]\n` +
+    `  porta-product-lifecycle.mjs preview-ready --run-key <key> --operation-key <key> --route-receipt <distribute-or-resume-route-receipt.json> [--cwd <path>]  # nonterminal\n` +
+    `  porta-product-lifecycle.mjs candidate-register --run-key <key> --operation-key <key> --output-root <path> --entry-path <path> --display-name <name> --spa-fallback <0|1> --route-receipt <distribute-or-resume-route-receipt.json> [--cwd <path>]\n` +
+    `  porta-product-lifecycle.mjs release-status --run-key <key> --route-receipt <distribute-or-resume-route-receipt.json> [--cwd <path>]\n` +
+    `  porta-product-lifecycle.mjs cancel --run-key <key> --route-receipt <distribute-or-resume-route-receipt.json> [--cwd <path>]\n` +
+    `  porta-product-lifecycle.mjs fail --run-key <key> --reason-code <code> --route-receipt <distribute-or-resume-route-receipt.json> [--cwd <path>]\n\n` +
     `Workflow v1 legacy Product Preview (protocol selector omitted or 1):\n` +
     `  porta-product-lifecycle.mjs capabilities\n` +
-    `  porta-product-lifecycle.mjs begin --run-key <key> --provider <codex|claude|gemini> [--provider-session-id <id>] [--cwd <path>]\n` +
-    `  porta-product-lifecycle.mjs ready --run-key <key> [--cwd <path>]\n` +
-    `  porta-product-lifecycle.mjs fail --run-key <key> --outcome <failed|unsupported> [--reason-code <code>] [--cwd <path>]\n` +
-    `  porta-product-lifecycle.mjs stop --run-key <key> [--cwd <path>]\n` +
+    `  porta-product-lifecycle.mjs begin --run-key <key> --provider <codex|claude|gemini> --route-receipt <porta-preview-route-receipt.json> [--provider-session-id <id>] [--cwd <path>]\n` +
+    `  porta-product-lifecycle.mjs ready --run-key <key> --route-receipt <porta-preview-or-resume-route-receipt.json> [--cwd <path>]\n` +
+    `  porta-product-lifecycle.mjs fail --run-key <key> --outcome <failed|unsupported> --route-receipt <porta-preview-or-resume-route-receipt.json> [--reason-code <code>] [--cwd <path>]\n` +
+    `  porta-product-lifecycle.mjs stop --run-key <key> --route-receipt <porta-preview-or-resume-route-receipt.json> [--cwd <path>]\n` +
     `  porta-product-lifecycle.mjs version\n\n` +
     `The client discovers Porta's standard user launcher before PATH. Set PORTA_BRIDGE_BIN only for an explicit nonstandard installation.\n`
 }
@@ -315,7 +372,7 @@ async function publishAgentArtifact(tokens) {
     'title',
     'turn-id',
   ])
-  const cwd = await realpath(resolve(requireBoundedText(options.cwd, 4096, 'cwd')))
+  const cwd = await realpath(resolve(requireBoundedText(options.cwd, 2048, 'cwd')))
   const path = await realpath(resolve(requireBoundedText(options.path, 4096, 'path')))
   const requestId = String(options.request ?? '')
   if (!/^[A-Za-z0-9_-]{8,128}$/.test(requestId)) {
@@ -351,6 +408,7 @@ async function publishAgentArtifact(tokens) {
     '--cwd', cwd,
     '--path', path,
     '--request', requestId,
+    '--receipt-version', '2',
     '--provider', provider,
     '--session', providerSessionId,
     ...(options['turn-id'] ? ['--turn', requireBoundedText(options['turn-id'], 256, 'turn id')] : []),
@@ -359,13 +417,14 @@ async function publishAgentArtifact(tokens) {
     '--trace-id', traceId,
     '--json',
   ])
-  validateAgentArtifactPublishReceipt(receipt, { intent, path, traceId })
+  validateAgentArtifactPublishReceipt(receipt, { intent, path, requestId, traceId })
   writeResult(receipt)
 }
 
-function validateAgentArtifactPublishReceipt(value, { intent, path, traceId }) {
+function validateAgentArtifactPublishReceipt(value, { intent, path, requestId, traceId }) {
   const receipt = requireExactRecord(value, [
-    'artifact', 'eventId', 'ok', 'protocolVersion', 'traceId', 'type',
+    'artifact', 'eventId', 'idempotent', 'ok', 'protocolVersion', 'requestId',
+    'traceId', 'type', 'version',
   ], [], 'artifact publish receipt')
   const artifact = requireExactRecord(receipt.artifact, [
     'artifactRef', 'bytes', 'digest', 'expiresAt', 'fileName', 'mediaType',
@@ -374,6 +433,8 @@ function validateAgentArtifactPublishReceipt(value, { intent, path, traceId }) {
   if (
     receipt.ok !== true || receipt.protocolVersion !== 1 ||
     receipt.traceId !== traceId || receipt.type !== 'artifact-publish' ||
+    receipt.version !== 2 || typeof receipt.idempotent !== 'boolean' ||
+    receipt.requestId !== requestId ||
     typeof receipt.eventId !== 'string' || receipt.eventId.length < 8 || receipt.eventId.length > 512 ||
     typeof artifact.artifactRef !== 'string' || !/^artifact_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(artifact.artifactRef) ||
     !Number.isSafeInteger(artifact.bytes) || artifact.bytes < 0 || artifact.bytes > 256 * 1024 * 1024 ||

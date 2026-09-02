@@ -37,7 +37,8 @@ completely before publishing the first file.
    `porta-product-lifecycle` client so there is one receipt validator and one
    Bridge contract. If that dependency is missing or incompatible, fail closed
    and report the exact setup problem.
-5. Accept only the structured publish receipt. Report publish acceptance,
+5. Accept only the structured v2 publish receipt with the exact request id and
+   explicit idempotency disposition. Report publish acceptance,
    Inbox projection, popup presentation, byte-verified preview, and device save
    as separate states. Never claim a later state without its own observation.
 

@@ -10,6 +10,7 @@ import {
   BuildExecutionValidationError,
   planBuildExecution,
 } from '../scripts/build-execution-plan.mjs'
+import { writePackageRouteReceipt } from './helpers/lifecycle-route-fixture.mjs'
 
 const clientPath = fileURLToPath(new URL('../scripts/porta-product-lifecycle.mjs', import.meta.url))
 
@@ -92,7 +93,10 @@ test('client command returns a read-only plan without requiring Bridge', async (
   try {
     const specPath = join(root, 'request.json')
     await writeFile(specPath, JSON.stringify(request({ kind: 'local-machine' })))
-    const result = spawnSync(process.execPath, [clientPath, 'build-execution-plan', '--spec', specPath], {
+    const routeReceipt = writePackageRouteReceipt(root)
+    const result = spawnSync(process.execPath, [
+      clientPath, 'build-execution-plan', '--spec', specPath, '--route-receipt', routeReceipt,
+    ], {
       encoding: 'utf8',
       env: { PATH: '' },
     })
@@ -111,7 +115,10 @@ test('client preserves bounded validation errors instead of returning an interna
   try {
     const specPath = join(root, 'request.json')
     await writeFile(specPath, JSON.stringify(request({ kind: 'connected-host', targetRef: 'short' })))
-    const result = spawnSync(process.execPath, [clientPath, 'build-execution-plan', '--spec', specPath], {
+    const routeReceipt = writePackageRouteReceipt(root)
+    const result = spawnSync(process.execPath, [
+      clientPath, 'build-execution-plan', '--spec', specPath, '--route-receipt', routeReceipt,
+    ], {
       encoding: 'utf8',
       env: { PATH: '' },
     })

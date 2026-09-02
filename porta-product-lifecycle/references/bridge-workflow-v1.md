@@ -21,13 +21,21 @@ node "/absolute/path/to/porta-product-lifecycle/scripts/porta-product-lifecycle.
 
 Record the returned `runKey` before beginning. Do not hide `new-run-key` inside command substitution: the key must remain available if a later command's output is interrupted.
 
+Before `begin`, settle a route with `outcome: "preview"`, the Product object,
+`target: {"kind":"porta-device","ref":"current-user","source":"user"}`,
+`portaContext: "trusted"`, current explicit mutation intent, and that exact Run
+key. Persist the returned receipt and use it unchanged for this request. A
+generic local/browser candidate preview remains owned by `deliver-product` and
+does not authorize this Bridge workflow.
+
 Use the real current Agent provider: `codex`, `claude`, or `gemini`. Pass `--provider-session-id` only when the runtime exposes an exact stable session ID; omission is safer than invention.
 
 ```bash
 node "$CLIENT" begin \
   --cwd "$(pwd -P)" \
   --provider codex \
-  --run-key "run_00000000-0000-4000-8000-000000000000"
+  --run-key "run_00000000-0000-4000-8000-000000000000" \
+  --route-receipt "$ROUTE_RECEIPT"
 ```
 
 `begin` returns and persists Bridge-issued `workRunId`, `requestId`, `traceId`, `manifestPath`, and `logPath`. The state file lives under `.porta/workflow-client/`; do not commit it. Repeating `begin` with the same Run key and identical inputs returns the same local receipt.
@@ -51,14 +59,14 @@ All commands return JSON. Use the same Run key from `begin` for the entire lifec
 
 | Intent | Command |
 | --- | --- |
-| Inspect identities and paths | `node "$CLIENT" show --run-key "$RUN_KEY"` |
-| Planning/implementation/build/test update | `node "$CLIENT" progress --run-key "$RUN_KEY" --operation-key progress-1 --phase planning --summary "Inspecting project"` |
-| Start Product Preview monitoring | `node "$CLIENT" preview-start --run-key "$RUN_KEY"` |
-| Request user attention | `node "$CLIENT" attention --run-key "$RUN_KEY" --operation-key attention-1 --reason-code user_input_required` |
-| Write schema v2 manifest | `node "$CLIENT" manifest --run-key "$RUN_KEY" --spec /path/to/spec.json` |
-| Announce verified Ready manifest | `node "$CLIENT" ready --run-key "$RUN_KEY"` |
-| Announce failed/unsupported manifest | `node "$CLIENT" fail --run-key "$RUN_KEY" --outcome failed --reason-code build_failed` |
-| Stop exact WorkRun | `node "$CLIENT" stop --run-key "$RUN_KEY"` |
+| Inspect identities and paths | `node "$CLIENT" show --run-key "$RUN_KEY" --route-receipt "$ROUTE_RECEIPT"` |
+| Planning/implementation/build/test update | `node "$CLIENT" progress --run-key "$RUN_KEY" --operation-key progress-1 --phase planning --summary "Inspecting project" --route-receipt "$ROUTE_RECEIPT"` |
+| Start Product Preview monitoring | `node "$CLIENT" preview-start --run-key "$RUN_KEY" --route-receipt "$ROUTE_RECEIPT"` |
+| Request user attention | `node "$CLIENT" attention --run-key "$RUN_KEY" --operation-key attention-1 --reason-code user_input_required --route-receipt "$ROUTE_RECEIPT"` |
+| Write schema v2 manifest | `node "$CLIENT" manifest --run-key "$RUN_KEY" --spec /path/to/spec.json --route-receipt "$ROUTE_RECEIPT"` |
+| Announce verified Ready manifest | `node "$CLIENT" ready --run-key "$RUN_KEY" --route-receipt "$ROUTE_RECEIPT"` |
+| Announce failed/unsupported manifest | `node "$CLIENT" fail --run-key "$RUN_KEY" --outcome failed --reason-code build_failed --route-receipt "$ROUTE_RECEIPT"` |
+| Stop exact WorkRun | `node "$CLIENT" stop --run-key "$RUN_KEY" --route-receipt "$ROUTE_RECEIPT"` |
 
 Allowed progress phases are `planning`, `implementing`, `building`, `testing`, and `waiting`. Percent is optional and must be an integer from 0 through 100. Summary is optional, bounded, and privacy-safe.
 

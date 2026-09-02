@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
+import { writeFileSync } from 'node:fs'
 import { chmod, mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
+
+import { planLifecycleRoute } from '../scripts/lifecycle-route.mjs'
 
 const clientPath = fileURLToPath(new URL('../scripts/porta-product-lifecycle.mjs', import.meta.url))
 const skillPath = fileURLToPath(new URL('../SKILL.md', import.meta.url))
@@ -145,7 +148,7 @@ process.exit(4)
 }
 
 function run(value, args, overrides = {}) {
-  return spawnSync(process.execPath, [clientPath, ...args], {
+  return spawnSync(process.execPath, [clientPath, ...withRouteReceipt(value, args)], {
     cwd: value.project,
     encoding: 'utf8',
     env: {
@@ -157,6 +160,35 @@ function run(value, args, overrides = {}) {
       ...overrides,
     },
   })
+}
+
+let routeReceiptSequence = 0
+
+function withRouteReceipt(value, args) {
+  const command = args[0]
+  if (
+    !['local-release-register', 'local-release-status', 'private-product-register', 'private-product-status'].includes(command) ||
+    args.includes('--route-receipt')
+  ) return args
+  const runKeyIndex = args.indexOf('--run-key')
+  const exactRunKey = runKeyIndex >= 0 ? args[runKeyIndex + 1] : null
+  if (!exactRunKey) return args
+  const privateProduct = command.startsWith('private-product-')
+  const route = planLifecycleRoute({
+    explicitMutationIntent: true,
+    object: { kind: 'product', ref: 'product_current' },
+    outcome: privateProduct ? 'materialize-private' : 'deploy',
+    portaContext: 'trusted',
+    runKey: exactRunKey,
+    schemaVersion: 1,
+    target: privateProduct
+      ? { kind: 'porta-web', ref: 'product_current', source: 'trusted-runtime' }
+      : { kind: 'porta-local', ref: 'product_current', source: 'trusted-runtime' },
+  })
+  routeReceiptSequence += 1
+  const receiptPath = join(value.root, `.route-receipt-${routeReceiptSequence}.json`)
+  writeFileSync(receiptPath, JSON.stringify(route))
+  return [...args, '--route-receipt', receiptPath]
 }
 
 const runKey = 'run_11111111-1111-4111-8111-111111111111'

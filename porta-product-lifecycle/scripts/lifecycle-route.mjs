@@ -19,6 +19,7 @@ const outcomes = new Set([
   'operate',
   'package',
   'preview',
+  'resume-run',
   'skill-install',
   'verify',
 ])
@@ -205,7 +206,7 @@ export function planLifecycleRoute(value) {
     })
   }
 
-  if (input.outcome === 'inspect-run' || input.outcome === 'cancel-run') {
+  if (['inspect-run', 'cancel-run', 'resume-run'].includes(input.outcome)) {
     return planRetainedRun(input)
   }
 
@@ -326,8 +327,27 @@ function normalizeStringSet(value, pattern, label) {
 }
 
 function planProductWork(input) {
-  requireNoRunKey(input)
   if (input.outcome === 'preview') {
+    if (input.target.kind === 'porta-device') {
+      if (input.target.ref !== 'current-user') return clarify(input, 'same_user_porta_target_required')
+      if (!input.explicitMutationIntent) return clarify(input, 'porta_preview_intent_required')
+      if (!hasTrustedTarget(input)) return clarify(input, 'trusted_target_required')
+      if (!input.runKey) return clarify(input, 'run_key_required')
+      return settle(input, {
+        disposition: 'act',
+        phase: 'preview-accept',
+        authority: 'local-runtime-mutation',
+        owner: { adapter: 'product-preview', skill: 'porta-product-lifecycle' },
+        allowedCommands: [
+          'attention', 'begin', 'fail', 'manifest', 'preview-ready', 'preview-start',
+          'progress', 'ready', 'show', 'stop',
+        ],
+        requiredEvidence: ['exact-preview-candidate', 'target-preview-observation'],
+        reasonCode: 'route_ready',
+        workRun: { key: input.runKey, policy: 'new-exact' },
+      })
+    }
+    requireNoRunKey(input)
     return settle(input, {
       disposition: 'delegate',
       phase: 'preview-accept',
@@ -337,6 +357,7 @@ function planProductWork(input) {
       reasonCode: 'owned_by_delivery_adapter',
     })
   }
+  requireNoRunKey(input)
   requireNoTarget(input)
   const definitions = {
     define: {
@@ -362,7 +383,13 @@ function planProductWork(input) {
     },
     package: {
       authority: 'project-write',
-      commands: ['build-execution-plan', 'lifecycle-plan', 'package-validate', 'package-verify'],
+      commands: [
+        'build-execution-plan',
+        'capability-negotiate',
+        'lifecycle-plan',
+        'package-validate',
+        'package-verify',
+      ],
       evidence: ['product-package-receipt'],
       owner: { adapter: 'product-package', skill: 'porta-product-lifecycle' },
       phase: 'materialize',
@@ -460,7 +487,7 @@ function planDistribution(input) {
       owner: { adapter: 'porta-web-release', skill: 'porta-product-lifecycle' },
       allowedCommands: [
         'attention', 'begin', 'cancel', 'candidate-register', 'fail', 'manifest',
-        'preview-ready', 'preview-start', 'progress', 'release-status', 'show',
+        'preview-ready', 'preview-start', 'progress', 'ready', 'release-status', 'show', 'stop',
       ],
       requiredEvidence: [
         'bridge-publication-receipt', 'provider-release-readback', 'public-target-observation',
@@ -510,12 +537,23 @@ function planRetainedRun(input) {
   if (input.outcome === 'cancel-run' && !input.explicitMutationIntent) {
     return clarify(input, 'run_cancellation_intent_required')
   }
+  if (input.outcome === 'resume-run' && !input.explicitMutationIntent) {
+    return clarify(input, 'run_resume_intent_required')
+  }
+  const resumeCommands = [
+    'attention', 'cancel', 'candidate-register', 'fail', 'manifest', 'preview-ready',
+    'preview-start', 'progress', 'ready', 'release-status', 'show', 'stop',
+  ]
   return settle(input, {
     disposition: 'act',
     phase: 'retained-run-control',
-    authority: input.outcome === 'cancel-run' ? 'external-mutation' : 'read-only',
+    authority: input.outcome === 'inspect-run' ? 'read-only' : 'external-mutation',
     owner: { adapter: 'exact-retained-run', skill: 'porta-product-lifecycle' },
-    allowedCommands: input.outcome === 'cancel-run' ? ['cancel', 'stop'] : ['release-status', 'show'],
+    allowedCommands: input.outcome === 'cancel-run'
+      ? ['cancel', 'stop']
+      : input.outcome === 'resume-run'
+        ? resumeCommands
+        : ['release-status', 'show'],
     requiredEvidence: ['exact-run-receipt'],
     reasonCode: 'route_ready',
     workRun: { key: objectRunKey, policy: 'resume-exact' },

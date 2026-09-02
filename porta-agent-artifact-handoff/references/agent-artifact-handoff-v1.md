@@ -30,10 +30,13 @@ deployment, public link, cloud artifact, or cross-user message.
    Provider and Provider session. Choose `preview-now` when the user asked to
    see it now; choose `inbox` for durable Inbox delivery without a Terminal
    popup.
-5. Accept success only from an exact publish receipt containing an opaque
-   artifact reference, byte count, SHA-256, expiry, media type, preview kind
-   and revision. The receipt and Inbox event must not contain an absolute remote
-   path or file bytes.
+5. Accept success only from the exact version-2 publish receipt containing the
+   echoed request id, explicit `idempotent` disposition, opaque artifact
+   reference, byte count, SHA-256, expiry, media type, preview kind and
+   revision. The receipt and Inbox event must not contain an absolute remote
+   path or file bytes. Bridge keeps its legacy receipt only for older clients;
+   the sibling Lifecycle 1.1.0 client requires Bridge Runtime 1.17.8 and asks
+   for receipt version 2 explicitly.
 6. Tell the user that Porta can preview or save only while the same SSH Host and
    Bridge can resolve the unexpired unchanged revision. Inbox durability does
    not make the file cloud-hosted.

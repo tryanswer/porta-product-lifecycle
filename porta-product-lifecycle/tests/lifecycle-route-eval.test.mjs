@@ -14,8 +14,8 @@ test('deterministic route corpus passes every declared lifecycle boundary', () =
   const result = spawnSync(process.execPath, [evaluator], { encoding: 'utf8' })
   assert.equal(result.status, 0, result.stderr)
   const report = JSON.parse(result.stdout)
-  assert.equal(report.total, 14)
-  assert.equal(report.passed, 14)
+  assert.equal(report.total, 16)
+  assert.equal(report.passed, 16)
   assert.equal(report.failed, 0)
 })
 
@@ -30,7 +30,7 @@ test('provider-neutral scorer accepts exact model routes and detects one drifted
   })).join('\n')}\n`)
   const accepted = spawnSync(process.execPath, [scorer, '--responses', responses], { encoding: 'utf8' })
   assert.equal(accepted.status, 0, accepted.stderr)
-  assert.equal(JSON.parse(accepted.stdout).passed, 14)
+  assert.equal(JSON.parse(accepted.stdout).passed, 16)
 
   const first = corpus.cases[0]
   first.routeInput.outcome = 'package'

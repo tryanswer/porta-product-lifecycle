@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
+import { writeFileSync } from 'node:fs'
 import { chmod, mkdtemp, mkdir, readFile, realpath, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import http from 'node:http'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
+
+import { planLifecycleRoute } from '../scripts/lifecycle-route.mjs'
 
 const clientPath = fileURLToPath(new URL('../scripts/porta-product-lifecycle.mjs', import.meta.url))
 const referencePath = fileURLToPath(new URL('../references/bridge-workflow-v1.md', import.meta.url))
@@ -71,10 +74,13 @@ if (topCommand === 'artifact' && command === 'publish') {
       revision: 1
     },
     eventId: 'bridge:codex:artifact:event-12345678',
+    idempotent: false,
     ok: true,
     protocolVersion: 1,
+    requestId: option('--request'),
     traceId: option('--trace-id'),
-    type: 'artifact-publish'
+    type: 'artifact-publish',
+    version: 2
   }))
   process.exit(0)
 }
@@ -329,7 +335,7 @@ process.exit(result.status ?? 1)
 }
 
 function run(fixture, args) {
-  return spawnSync(process.execPath, [clientPath, ...args], {
+  return spawnSync(process.execPath, [clientPath, ...withRouteReceipt(fixture, args)], {
     cwd: fixture.project,
     encoding: 'utf8',
     env: {
@@ -342,7 +348,7 @@ function run(fixture, args) {
 
 function runAsync(fixture, args) {
   return new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn(process.execPath, [clientPath, ...args], {
+    const child = spawn(process.execPath, [clientPath, ...withRouteReceipt(fixture, args)], {
       cwd: fixture.project,
       env: {
         ...process.env,
@@ -362,6 +368,45 @@ function runAsync(fixture, args) {
       resolvePromise({ status, stderr, stdout })
     })
   })
+}
+
+const routeGatedTestCommands = new Set([
+  'attention', 'begin', 'cancel', 'candidate-register', 'fail', 'manifest',
+  'preview-ready', 'preview-start', 'progress', 'ready', 'release-status', 'show', 'stop',
+])
+let routeReceiptSequence = 0
+
+function withRouteReceipt(fixture, args) {
+  const command = args[0]
+  if (!routeGatedTestCommands.has(command) || args.includes('--route-receipt')) return args
+  const runKeyIndex = args.indexOf('--run-key')
+  const runKey = runKeyIndex >= 0 ? args[runKeyIndex + 1] : null
+  if (!runKey) return args
+  const releaseBegin = command === 'begin' &&
+    args[args.indexOf('--workflow-protocol-version') + 1] === '2'
+  const route = command === 'begin' ? planLifecycleRoute({
+    explicitMutationIntent: true,
+    object: { kind: 'product', ref: 'product_current' },
+    outcome: releaseBegin ? 'distribute' : 'preview',
+    portaContext: 'trusted',
+    runKey,
+    schemaVersion: 1,
+    target: releaseBegin
+      ? { kind: 'porta-web', ref: 'product_current', source: 'trusted-runtime' }
+      : { kind: 'porta-device', ref: 'current-user', source: 'user' },
+  }) : planLifecycleRoute({
+    explicitMutationIntent: true,
+    object: { kind: 'run', ref: runKey },
+    outcome: 'resume-run',
+    portaContext: 'trusted',
+    runKey,
+    schemaVersion: 1,
+    target: { kind: 'none', ref: null, source: 'none' },
+  })
+  routeReceiptSequence += 1
+  const receiptPath = join(fixture.project, `.route-receipt-${routeReceiptSequence}.json`)
+  writeFileSync(receiptPath, JSON.stringify(route))
+  return [...args, '--route-receipt', receiptPath]
 }
 
 test('client discovers the Porta-managed Bridge launcher outside PATH', async () => {
@@ -761,6 +806,29 @@ test('1.1.0 client resumes a retained 1.0.4 run with its original Bridge identit
   }
 })
 
+for (const compatibleVersion of ['1.0.5', '1.0.6', '1.0.7']) {
+  test(`1.1.0 client resumes a retained ${compatibleVersion} run with its original Bridge identity`, async () => {
+    const fixture = await createFixture()
+    try {
+      const { key, result } = await beginReleaseRun(fixture)
+      const state = JSON.parse(await readFile(result.stateFile, 'utf8'))
+      delete state.receipt
+      state.skillVersion = compatibleVersion
+      await writeFile(result.stateFile, JSON.stringify(state))
+
+      const resumed = parseSuccess(run(fixture, [
+        'begin',
+        '--workflow-protocol-version', '2',
+        '--run-key', key,
+        '--provider', 'codex',
+      ]))
+      assert.equal(resumed.receipt.skillVersion, compatibleVersion)
+    } finally {
+      await fixture.cleanup()
+    }
+  })
+}
+
 test('1.1.0 client refuses an invented prior version of the new identity', async () => {
   const fixture = await createFixture()
   try {
@@ -940,7 +1008,7 @@ test('incompatible Bridge runtime is rejected before a WorkRun begins', async ()
 test('Agent Artifact Handoff publishes one request-owned file without creating a WorkRun', async () => {
   const fixture = await createFixture()
   try {
-    fixture.environment.FAKE_RUNTIME_VERSION = '1.17.7'
+    fixture.environment.FAKE_RUNTIME_VERSION = '1.17.8'
     const requestId = 'request_12345678'
     const artifactDirectory = join(fixture.project, '.porta', 'artifacts', requestId)
     const artifactPath = join(artifactDirectory, 'review.md')
@@ -957,11 +1025,15 @@ test('Agent Artifact Handoff publishes one request-owned file without creating a
       '--intent', 'preview-now',
     ]))
     assert.equal(result.type, 'artifact-publish')
+    assert.equal(result.idempotent, false)
+    assert.equal(result.requestId, requestId)
+    assert.equal(result.version, 2)
     assert.equal(result.artifact.fileName, 'review.md')
     assert.equal(result.artifact.presentationIntent, 'preview-now')
     assert.equal(Object.hasOwn(result, 'remotePath'), false)
     const calls = (await readFile(fixture.log, 'utf8')).trim().split('\n').map(JSON.parse)
     assert.deepEqual(calls.map((call) => call[0]), ['status', 'artifact'])
+    assert.equal(calls[1][calls[1].indexOf('--receipt-version') + 1], '2')
     assert.equal(calls.some((call) => call.includes('begin')), false)
 
     const outsidePath = join(fixture.project, 'outside.md')
@@ -977,7 +1049,7 @@ test('Agent Artifact Handoff publishes one request-owned file without creating a
     assert.equal(rejected.status, 1)
     assert.equal(JSON.parse(rejected.stderr).code, 'artifact_path_invalid')
 
-    fixture.environment.FAKE_RUNTIME_VERSION = '1.17.6'
+    fixture.environment.FAKE_RUNTIME_VERSION = '1.17.7'
     const incompatible = run(fixture, [
       'artifact-publish',
       '--cwd', fixture.project,
@@ -989,7 +1061,7 @@ test('Agent Artifact Handoff publishes one request-owned file without creating a
     assert.equal(incompatible.status, 1)
     const incompatibility = JSON.parse(incompatible.stderr)
     assert.equal(incompatibility.code, 'workflow_incompatible')
-    assert.match(incompatibility.message, /Runtime 1\.17\.7 or newer/u)
+    assert.match(incompatibility.message, /Runtime 1\.17\.8 or newer/u)
   } finally {
     await fixture.cleanup()
   }
@@ -1478,6 +1550,46 @@ test('client reports neutral Scene Pack readiness against the real Agent Bridge'
     assert.deepEqual(state.beginReceipts, {})
     assert.deepEqual(state.runs, {})
     assert.equal((await readdir(fixture.project)).includes('.porta'), false)
+  } finally {
+    await fixture.cleanup()
+  }
+})
+
+test('client and real Agent Bridge preserve one exact Artifact request across receipt and event', {
+  skip: realBridgeSource ? false : 'set PORTA_WORKFLOW_TEST_BRIDGE_SOURCE to the Agent Bridge module',
+}, async () => {
+  const fixture = await createRealBridgeFixture()
+  try {
+    const requestId = 'request_real_artifact_contract'
+    const artifactDirectory = join(fixture.project, '.porta', 'artifacts', requestId)
+    const artifactPath = join(artifactDirectory, 'contract.png')
+    await mkdir(artifactDirectory, { recursive: true })
+    await writeFile(artifactPath, 'stable artifact contract bytes')
+    const args = [
+      'artifact-publish',
+      '--cwd', fixture.project,
+      '--path', artifactPath,
+      '--request', requestId,
+      '--provider', 'codex',
+      '--provider-session-id', 'session_real_artifact_contract',
+      '--intent', 'preview-now',
+      '--title', 'Contract image',
+    ]
+    const first = parseSuccess(run(fixture, args))
+    const replay = parseSuccess(run(fixture, args))
+    assert.equal(first.version, 2)
+    assert.equal(first.requestId, requestId)
+    assert.equal(first.idempotent, false)
+    assert.equal(replay.idempotent, true)
+    assert.equal(replay.eventId, first.eventId)
+    assert.equal(replay.artifact.artifactRef, first.artifact.artifactRef)
+
+    const pulled = parseSuccess(runBridgeDirect(fixture, [
+      'pull', '--after', '0', '--limit', '10', '--trace-id', 'artifact-contract-pull', '--json',
+    ]))
+    assert.equal(pulled.events.length, 1)
+    assert.equal(pulled.events[0].artifact.artifactRef, first.artifact.artifactRef)
+    assert.equal(pulled.events[0].sourceKey, `bridge:codex:artifact:${requestId}`)
   } finally {
     await fixture.cleanup()
   }

@@ -10,6 +10,8 @@ const artifactSkillUrl = new URL('../../porta-agent-artifact-handoff/SKILL.md', 
 const artifactHandoffUrl = new URL('../../porta-agent-artifact-handoff/references/agent-artifact-handoff-v1.md', import.meta.url)
 const productPackageUrl = new URL('../references/product-package-v1.md', import.meta.url)
 const productAssetsUrl = new URL('../references/product-assets-v1.md', import.meta.url)
+const previewWorkflowUrl = new URL('../references/bridge-workflow-v1.md', import.meta.url)
+const releaseWorkflowUrl = new URL('../references/bridge-workflow-v2.md', import.meta.url)
 
 test('Lifecycle settles deterministic ownership before loading phase-specific routing', async () => {
   const skill = await readFile(skillUrl, 'utf8')
@@ -22,6 +24,19 @@ test('Lifecycle settles deterministic ownership before loading phase-specific ro
   assert.match(routing, /define -> develop\/verify -> materialize -> preview\/accept -> deploy -> distribute -> operate\/iterate/u)
   assert.match(routing, /Route every entered phase before doing phase work/u)
   assert.match(routing, /Skill Route Receipt/u)
+})
+
+test('Porta Preview and Web Release references carry their exact route receipts', async () => {
+  const [preview, release] = await Promise.all([
+    readFile(previewWorkflowUrl, 'utf8'),
+    readFile(releaseWorkflowUrl, 'utf8'),
+  ])
+  assert.match(preview, /outcome: "preview"/u)
+  assert.match(preview, /porta-device.*current-user.*source.*user/u)
+  assert.match(preview, /begin[\s\S]*--route-receipt "\$ROUTE_RECEIPT"/u)
+  assert.match(release, /`distribute` route/u)
+  assert.match(release, /begin[\s\S]*--route-receipt "\$ROUTE_RECEIPT"/u)
+  assert.match(release, /release-status --run-key "\$RUN_KEY" --route-receipt "\$ROUTE_RECEIPT"/u)
 })
 
 test('development evidence can use privacy-bounded Agent Artifact Handoff without changing lifecycle phase', async () => {

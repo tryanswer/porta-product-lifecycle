@@ -11,7 +11,8 @@ but this command does not execute that deployment.
 
 Bridge Runtime `1.16.6` or newer must advertise the additive Product
 Materialization and non-publish Product Work operations. Create and retain one
-Run key, then register the exact verified package:
+Run key, settle a `materialize-private` route for that same key, then register
+the exact verified package with its unchanged route receipt:
 
 ```text
 node <skill-directory>/scripts/porta-product-lifecycle.mjs new-run-key
@@ -21,7 +22,8 @@ node <skill-directory>/scripts/porta-product-lifecycle.mjs private-product-regis
   --package-root <absolute-package-root> \
   --provider <codex|claude|gemini> \
   --provider-session-id <exact-current-session-id> \
-  --cwd <exact-project-root>
+  --cwd <exact-project-root> \
+  --route-receipt <private-materialization-route-receipt.json>
 ```
 
 The client re-verifies actual package bytes before mutation, writes a private
@@ -39,7 +41,8 @@ durable Product/Revision and settles the exact identity through Bridge:
 
 ```text
 node <skill-directory>/scripts/porta-product-lifecycle.mjs private-product-status \
-  --run-key <same-key>
+  --run-key <same-key> \
+  --route-receipt <private-or-resume-route-receipt.json>
 ```
 
 Only an exact Bridge `ready` receipt with Product, Revision, product version,

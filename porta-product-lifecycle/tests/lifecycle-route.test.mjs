@@ -62,6 +62,8 @@ test('Porta Web publication binds explicit intent, exact target and one new Run'
   assert.deepEqual(route.owner, { adapter: 'porta-web-release', skill: 'porta-product-lifecycle' })
   assert.deepEqual(route.workRun, { key: runKey, policy: 'new-exact' })
   assert.ok(route.allowedCommands.includes('begin'))
+  assert.ok(route.allowedCommands.includes('ready'))
+  assert.ok(route.allowedCommands.includes('stop'))
   assert.ok(route.requiredEvidence.includes('public-target-observation'))
 })
 
@@ -77,12 +79,65 @@ test('single-channel mobile store release delegates instead of competing for own
   assert.deepEqual(route.allowedCommands, [])
 })
 
-test('preview delegates to delivery and cannot be mistaken for Lifecycle execution', () => {
+test('generic candidate preview delegates to delivery instead of starting a Porta WorkRun', () => {
   const route = planLifecycleRoute(input({ outcome: 'preview' }))
   assert.equal(route.disposition, 'delegate')
   assert.equal(route.phase, 'preview-accept')
   assert.deepEqual(route.owner, { adapter: 'product-preview', skill: 'deliver-product' })
   assert.deepEqual(route.allowedCommands, [])
+})
+
+test('explicit same-user Porta Product Preview binds one exact legacy preview Run', () => {
+  const runKey = 'run_77777777-7777-4777-8777-777777777777'
+  const route = planLifecycleRoute(input({
+    explicitMutationIntent: true,
+    outcome: 'preview',
+    runKey,
+    target: { kind: 'porta-device', ref: 'current-user', source: 'user' },
+  }))
+  assert.equal(route.disposition, 'act')
+  assert.equal(route.phase, 'preview-accept')
+  assert.equal(route.authority, 'local-runtime-mutation')
+  assert.deepEqual(route.owner, { adapter: 'product-preview', skill: 'porta-product-lifecycle' })
+  assert.deepEqual(route.workRun, { key: runKey, policy: 'new-exact' })
+  assert.ok(route.allowedCommands.includes('begin'))
+  assert.ok(route.allowedCommands.includes('preview-ready'))
+  assert.ok(route.allowedCommands.includes('stop'))
+  assert.ok(!route.allowedCommands.includes('candidate-register'))
+})
+
+test('Porta Product Preview fails closed without same-user target, intent, context, or Run', () => {
+  const runKey = 'run_77777777-7777-4777-8777-777777777777'
+  const previewInput = {
+    outcome: 'preview',
+    target: { kind: 'porta-device', ref: 'current-user', source: 'user' },
+  }
+  assert.equal(
+    planLifecycleRoute(input({ ...previewInput, runKey })).reasonCode,
+    'porta_preview_intent_required',
+  )
+  assert.equal(
+    planLifecycleRoute(input({
+      ...previewInput,
+      explicitMutationIntent: true,
+      portaContext: 'absent',
+      runKey,
+    })).reasonCode,
+    'trusted_target_required',
+  )
+  assert.equal(
+    planLifecycleRoute(input({ ...previewInput, explicitMutationIntent: true })).reasonCode,
+    'run_key_required',
+  )
+  assert.equal(
+    planLifecycleRoute(input({
+      ...previewInput,
+      explicitMutationIntent: true,
+      runKey,
+      target: { kind: 'porta-device', ref: 'another-user', source: 'user' },
+    })).reasonCode,
+    'same_user_porta_target_required',
+  )
 })
 
 test('same-user file handoff and Skill installation are routed out of Lifecycle', () => {
@@ -144,6 +199,17 @@ test('exact retained Run control cannot silently create a replacement Run', () =
   assert.deepEqual(route.workRun, { key: runKey, policy: 'resume-exact' })
   assert.deepEqual(route.allowedCommands, ['release-status', 'show'])
 
+  const resumed = planLifecycleRoute(input({
+    outcome: 'resume-run',
+    object: { kind: 'run', ref: runKey },
+    explicitMutationIntent: true,
+    runKey,
+  }))
+  assert.deepEqual(resumed.workRun, { key: runKey, policy: 'resume-exact' })
+  assert.ok(resumed.allowedCommands.includes('progress'))
+  assert.ok(resumed.allowedCommands.includes('ready'))
+  assert.equal(resumed.authority, 'external-mutation')
+
   assert.throws(
     () => planLifecycleRoute(input({
       outcome: 'inspect-run',
@@ -152,6 +218,15 @@ test('exact retained Run control cannot silently create a replacement Run', () =
     })),
     (error) => error instanceof LifecycleRouteValidationError && error.code === 'retained_run_mismatch',
   )
+})
+
+test('package route authorizes capability negotiation through the same receipt', () => {
+  const route = planLifecycleRoute(input({ outcome: 'package' }))
+  assert.ok(route.allowedCommands.includes('capability-negotiate'))
+  assert.doesNotThrow(() => assertLifecycleRouteCommand(route, {
+    command: 'capability-negotiate',
+    runKey: null,
+  }))
 })
 
 test('route input is strict and untrusted target context cannot grant mutation', () => {

@@ -167,7 +167,7 @@
         "explicitMutationIntent": false,
         "runKey": null
       },
-      "expected": { "disposition": "act", "phase": "materialize", "owner": { "adapter": "product-package" }, "workRun": { "policy": "none" }, "allowedCommands": ["build-execution-plan", "lifecycle-plan", "package-validate", "package-verify"] }
+      "expected": { "disposition": "act", "phase": "materialize", "owner": { "adapter": "product-package" }, "workRun": { "policy": "none" }, "allowedCommands": ["build-execution-plan", "capability-negotiate", "lifecycle-plan", "package-validate", "package-verify"] }
     },
     {
       "id": "preview-current-product",
@@ -184,6 +184,20 @@
       "expected": { "disposition": "delegate", "phase": "preview-accept", "owner": { "skill": "deliver-product", "adapter": "product-preview" }, "workRun": { "policy": "none" } }
     },
     {
+      "id": "preview-current-product-in-porta",
+      "message": "把当前产品发送到我已连接的 Porta 手机里做产品预览。",
+      "routeInput": {
+        "schemaVersion": 1,
+        "outcome": "preview",
+        "object": { "kind": "product", "ref": "product_current" },
+        "target": { "kind": "porta-device", "ref": "current-user", "source": "user" },
+        "portaContext": "trusted",
+        "explicitMutationIntent": true,
+        "runKey": "run_77777777-7777-4777-8777-777777777777"
+      },
+      "expected": { "disposition": "act", "phase": "preview-accept", "authority": "local-runtime-mutation", "owner": { "skill": "porta-product-lifecycle", "adapter": "product-preview" }, "workRun": { "policy": "new-exact" }, "allowedCommands": ["attention", "begin", "fail", "manifest", "preview-ready", "preview-start", "progress", "ready", "show", "stop"] }
+    },
+    {
       "id": "private-porta-materialization",
       "message": "在 Porta 中物化一个长期私有 Product 和 Revision，不部署也不公开发布。",
       "routeInput": {
@@ -196,6 +210,20 @@
         "runKey": "run_55555555-5555-4555-8555-555555555555"
       },
       "expected": { "disposition": "act", "phase": "materialize", "owner": { "adapter": "private-product" }, "workRun": { "policy": "new-exact" }, "allowedCommands": ["private-product-register", "private-product-status"] }
+    },
+    {
+      "id": "resume-retained-run",
+      "message": "继续 run_66666666-6666-4666-8666-666666666666 的原发布流程，不要创建替代 Run。",
+      "routeInput": {
+        "schemaVersion": 1,
+        "outcome": "resume-run",
+        "object": { "kind": "run", "ref": "run_66666666-6666-4666-8666-666666666666" },
+        "target": { "kind": "none", "ref": null, "source": "none" },
+        "portaContext": "trusted",
+        "explicitMutationIntent": true,
+        "runKey": "run_66666666-6666-4666-8666-666666666666"
+      },
+      "expected": { "disposition": "act", "phase": "retained-run-control", "authority": "external-mutation", "owner": { "adapter": "exact-retained-run" }, "workRun": { "policy": "resume-exact" }, "allowedCommands": ["attention", "cancel", "candidate-register", "fail", "manifest", "preview-ready", "preview-start", "progress", "ready", "release-status", "show", "stop"] }
     }
   ]
 }
