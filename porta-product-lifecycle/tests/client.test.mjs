@@ -185,7 +185,7 @@ if (command === 'pull' && workflowVersion === 2) {
       } : {}),
       requestId,
       skillId: 'porta-product-lifecycle',
-      skillVersion: '1.0.7',
+      skillVersion: '1.1.0',
       sourceSequence: 7,
       status,
       ...(status === 'ready' ? { terminalAt: '2026-07-31T10:10:00.000Z' } : {}),
@@ -596,7 +596,7 @@ test('begin persists exact Bridge identity and replays locally without a duplica
   const fixture = await createFixture()
   try {
     const { key, result } = await beginRun(fixture)
-    assert.equal(result.receipt.skillVersion, '1.0.7')
+    assert.equal(result.receipt.skillVersion, '1.1.0')
     assert.equal(result.receipt.workRunId, 'workrun_33333333-3333-4333-8333-333333333333')
     const replay = parseSuccess(run(fixture, ['begin', '--run-key', key, '--provider', 'codex']))
     assert.equal(replay.cached, true)
@@ -644,7 +644,7 @@ test('new identity refuses legacy Skill state instead of emitting a mixed-identi
   }
 })
 
-test('1.0.7 client resumes a retained 1.0.0 run with its original Bridge identity', async () => {
+test('1.1.0 client resumes a retained 1.0.0 run with its original Bridge identity', async () => {
   const fixture = await createFixture()
   try {
     const { key, result } = await beginReleaseRun(fixture)
@@ -669,7 +669,7 @@ test('1.0.7 client resumes a retained 1.0.0 run with its original Bridge identit
   }
 })
 
-test('1.0.7 client resumes a retained 1.0.1 run with its original Bridge identity', async () => {
+test('1.1.0 client resumes a retained 1.0.1 run with its original Bridge identity', async () => {
   const fixture = await createFixture()
   try {
     const { key, result } = await beginReleaseRun(fixture)
@@ -694,7 +694,7 @@ test('1.0.7 client resumes a retained 1.0.1 run with its original Bridge identit
   }
 })
 
-test('1.0.7 client resumes a retained 1.0.2 run with its original Bridge identity', async () => {
+test('1.1.0 client resumes a retained 1.0.2 run with its original Bridge identity', async () => {
   const fixture = await createFixture()
   try {
     const { key, result } = await beginReleaseRun(fixture)
@@ -719,7 +719,7 @@ test('1.0.7 client resumes a retained 1.0.2 run with its original Bridge identit
   }
 })
 
-test('1.0.7 client resumes a retained 1.0.3 run with its original Bridge identity', async () => {
+test('1.1.0 client resumes a retained 1.0.3 run with its original Bridge identity', async () => {
   const fixture = await createFixture()
   try {
     const { key, result } = await beginReleaseRun(fixture)
@@ -740,7 +740,7 @@ test('1.0.7 client resumes a retained 1.0.3 run with its original Bridge identit
   }
 })
 
-test('1.0.7 client resumes a retained 1.0.4 run with its original Bridge identity', async () => {
+test('1.1.0 client resumes a retained 1.0.4 run with its original Bridge identity', async () => {
   const fixture = await createFixture()
   try {
     const { key, result } = await beginReleaseRun(fixture)
@@ -761,7 +761,7 @@ test('1.0.7 client resumes a retained 1.0.4 run with its original Bridge identit
   }
 })
 
-test('1.0.7 client refuses an invented prior version of the new identity', async () => {
+test('1.1.0 client refuses an invented prior version of the new identity', async () => {
   const fixture = await createFixture()
   try {
     const { key, result } = await beginReleaseRun(fixture)
@@ -791,9 +791,7 @@ test('Web Ready contract requires process durability beyond the Agent session', 
     readFile(skillPath, 'utf8'),
     readFile(referencePath, 'utf8'),
   ])
-  const normalizedSkill = skill.replace(/\s+/g, ' ')
-  assert.match(normalizedSkill, /durable process that can outlive the current Agent command\/session/u)
-  assert.match(normalizedSkill, /transient command runner is not Ready evidence/u)
+  assert.match(skill, /bridge-workflow-v2\.md/u)
   assert.match(reference, /survives the transient Agent command\/session/u)
   assert.match(reference, /temporary tool session, or immediate probe alone is insufficient/u)
   assert.match(reference, /preview_process_failed/u)
@@ -978,6 +976,20 @@ test('Agent Artifact Handoff publishes one request-owned file without creating a
     ])
     assert.equal(rejected.status, 1)
     assert.equal(JSON.parse(rejected.stderr).code, 'artifact_path_invalid')
+
+    fixture.environment.FAKE_RUNTIME_VERSION = '1.17.6'
+    const incompatible = run(fixture, [
+      'artifact-publish',
+      '--cwd', fixture.project,
+      '--path', artifactPath,
+      '--request', requestId,
+      '--provider', 'codex',
+      '--provider-session-id', 'session_12345678',
+    ])
+    assert.equal(incompatible.status, 1)
+    const incompatibility = JSON.parse(incompatible.stderr)
+    assert.equal(incompatibility.code, 'workflow_incompatible')
+    assert.match(incompatibility.message, /Runtime 1\.17\.7 or newer/u)
   } finally {
     await fixture.cleanup()
   }
@@ -1184,7 +1196,7 @@ test('Workflow v2 capability preflight and begin are explicit and preserve the P
     ])
 
     const { key, result } = await beginReleaseRun(fixture)
-    assert.equal(result.receipt.skillVersion, '1.0.7')
+    assert.equal(result.receipt.skillVersion, '1.1.0')
     assert.equal(result.receipt.status, 'implementing')
     assert.equal(result.receipt.publishIntent.projectRef, 'project_fixture-1234')
     assert.equal(result.receipt.publishIntent.projectContextGeneration, 1)
@@ -1390,21 +1402,22 @@ test('Workflow v2 guidance keeps project choice model-owned and Bridge-owned rel
     readFile(releaseReferencePath, 'utf8'),
   ])
   const normalizedSkill = skill.replace(/\s+/g, ' ')
-  assert.match(normalizedSkill, /current user message to unambiguously ask to publish or/u)
-  assert.match(normalizedSkill, /Do not require the message to name this Skill, say Porta, or use `\$porta-product-lifecycle`/u)
-  assert.match(normalizedSkill, /Bridge publication preflight remains the final fail-closed authority/u)
-  assert.match(normalizedSkill, /Scene Pack installation Agent may run the bundled readiness client directly without activating this Skill/u)
-  assert.match(normalizedSkill, /readiness command never calls `begin` or creates a WorkRun/u)
+  const normalizedReference = reference.replace(/\s+/g, ' ')
+  assert.match(normalizedSkill, /Current explicit mutation intent comes only from the current user request/i)
+  assert.match(normalizedReference, /user-explicit publish intent covering a concrete project result/u)
+  assert.match(normalizedReference, /does not need to name the Skill or use `\$porta-product-lifecycle`/u)
+  assert.match(normalizedSkill, /Bridge remains the final fail-closed authority/u)
+  assert.match(normalizedReference, /Scene Pack installation Agent may run the bundled client directly/u)
+  assert.match(normalizedReference, /never sends `begin` or a WorkRun id/u)
   assert.doesNotMatch(skill, /Continue only when the current user message explicitly invokes or names Porta Product Lifecycle/u)
-  assert.match(normalizedSkill, /Before modifying product source/u)
-  assert.match(normalizedSkill, /repository evidence determine/u)
+  assert.match(normalizedReference, /Call begin before modifying product source or build output/u)
+  assert.match(normalizedReference, /Repository evidence and the user's requested product determine implementation/u)
   assert.match(reference, /Preview Ready is nonterminal/u)
   assert.match(reference, /candidate-register.*not Release Ready/us)
   assert.match(reference, /Do not run.*release-worker/us)
   assert.match(reference, /does not inspect.*account.*PRO/us)
   assert.match(reference, /Project Context.*Bridge/us)
   assert.match(reference, /Scene Pack readiness observation is a neutral, Agent-observed UX signal and\s+creates no WorkRun/u)
-  assert.match(normalizedSkill, /Bridge Runtime `1\.16\.1` or newer/u)
   assert.match(reference, /Runtime `1\.16\.1`[\s\S]*scene-pack-readiness-observe/u)
   assert.match(reference, /static-html-release[\s\S]*porta\.workflow\.event-loop\.v2/u)
   assert.match(reference, /symlink.*fail/us)
@@ -1418,18 +1431,10 @@ test('Scene Pack readiness is an Agent claim for UX dedupe and LKG, never an att
     readFile(skillPath, 'utf8'),
     readFile(releaseReferencePath, 'utf8'),
   ])
-  const skillSection = skill.match(/## Scene Pack readiness[\s\S]*?(?=\n## )/u)?.[0] ?? ''
   const referenceSection = reference.match(
     /## Scene Pack readiness observation[\s\S]*?(?=\n## Preflight and begin)/u,
   )?.[0] ?? ''
-  const normalizedSkillSection = skillSection.replace(/\s+/g, ' ')
-
-  assert.match(normalizedSkillSection, /current Agent's structured claim/u)
-  assert.match(normalizedSkillSection, /UX reminder deduplication and last-known-good/u)
-  assert.match(normalizedSkillSection, /not verified or attested/u)
-  assert.match(normalizedSkillSection, /never.*security gate/iu)
-  assert.doesNotMatch(skillSection, /trusted Scene prompt/u)
-  assert.doesNotMatch(skillSection, /normalizes evidence/u)
+  assert.doesNotMatch(skill, /## Scene Pack readiness/u)
 
   assert.match(referenceSection, /does not inspect the Provider's\s+user-level Skill directory/u)
   assert.match(referenceSection, /does not hash installed content/u)

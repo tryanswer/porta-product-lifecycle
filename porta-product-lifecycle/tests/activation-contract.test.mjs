@@ -7,36 +7,42 @@ const skillPath = fileURLToPath(new URL('../SKILL.md', import.meta.url))
 const metadataPath = fileURLToPath(new URL('../agents/openai.yaml', import.meta.url))
 const activationReferencePath = fileURLToPath(new URL('../references/skill-activation.md', import.meta.url))
 const migrationReferencePath = fileURLToPath(new URL('../references/legacy-migration.md', import.meta.url))
+const releaseReferencePath = fileURLToPath(new URL('../references/bridge-workflow-v2.md', import.meta.url))
+const activationCasesPath = fileURLToPath(new URL('../evals/activation-cases.json', import.meta.url))
 
 test('canonical identity and natural-language lifecycle activation are installable', async () => {
   const [skill, metadata] = await Promise.all([readFile(skillPath, 'utf8'), readFile(metadataPath, 'utf8')])
   assert.match(skill, /^---\nname: porta-product-lifecycle\n/m)
-  assert.match(skill, /guide, build, verify, package, preview, deploy, distribute, release, or operate/)
+  assert.match(skill, /concrete product.*Porta-governed lifecycle/)
   assert.match(metadata, /display_name: "Porta Product Lifecycle"/)
   assert.match(metadata, /allow_implicit_invocation:\s*true/)
-  assert.doesNotMatch(metadata, /\$porta-product-lifecycle/)
+  assert.match(metadata, /\$porta-product-lifecycle/)
 })
 
-test('planning and installation never grant mutation or WorkRun authority', async () => {
+test('deterministic routing separates planning, delegated installation, and mutation authority', async () => {
   const skill = (await readFile(skillPath, 'utf8')).replace(/\s+/g, ' ')
-  assert.match(skill, /Installation\/update.*never activates this Skill, calls `begin`, or creates a WorkRun/)
-  assert.match(
-    skill,
-    /`build-execution-plan`, `package-validate`, and `lifecycle-plan`.*never create a WorkRun or authorize external mutation/,
-  )
-  assert.match(skill, /Deployment requires an explicit target/)
-  assert.match(skill, /Distribution or Porta publication requires current explicit intent/)
-  assert.match(skill, /Store submission, approval, rollout, and public availability are distinct receipts/)
+  assert.match(skill, /Natural language proposes an intent; it does not grant execution authority/)
+  assert.match(skill, /Do not perform phase work before the route receipt is settled/)
+  assert.match(skill, /Skill installation or discovery.*`skill-installer` or the Provider-native mechanism/)
+  assert.match(skill, /These commands do not execute a constructor.*deploy, distribute, or create a WorkRun/)
+  assert.match(skill, /Require explicit placement and exposure/)
+  assert.match(skill, /Require current explicit intent and an exact channel/)
+  assert.match(skill, /submission, approval, rollout, and\s+public target observation/)
 })
 
 test('publication and readiness preserve the fail-closed Bridge boundaries', async () => {
-  const skill = (await readFile(skillPath, 'utf8')).replace(/\s+/g, ' ')
-  assert.match(skill, /current user message to unambiguously ask to publish or release/)
-  assert.match(skill, /Bridge publication preflight remains the final fail-closed authority/)
-  assert.match(skill, /current Agent's structured claim/)
-  assert.match(skill, /not verified or attested/)
-  assert.match(skill, /never as a security gate or publication authority/)
-  assert.match(skill, /readiness command never calls `begin` or creates a WorkRun/)
+  const [skillSource, releaseSource] = await Promise.all([
+    readFile(skillPath, 'utf8'),
+    readFile(releaseReferencePath, 'utf8'),
+  ])
+  const skill = skillSource.replace(/\s+/g, ' ')
+  const release = releaseSource.replace(/\s+/g, ' ')
+  assert.match(skill, /Current explicit mutation intent comes only from the current user request/i)
+  assert.match(skill, /Bridge remains the final fail-closed authority/)
+  assert.match(release, /Agent-observed UX signal/)
+  assert.match(release, /not verified or attested/i)
+  assert.match(release, /not a security gate/i)
+  assert.match(release, /cannot authorize `begin`, a WorkRun, or publication/i)
 })
 
 test('new identity installs atomically and migrates legacy input without mixed output identity', async () => {
@@ -57,4 +63,17 @@ test('known one-file drift requires an explicit bounded repair transaction', asy
   assert.match(activation, /one exact regular file path and the SHA-256 of its currently installed bytes/i)
   assert.match(activation, /every other path, mode, and byte must still match the immutable release/i)
   assert.match(activation, /does not authorize arbitrary installed content/i)
+})
+
+test('activation boundary corpus delegates concerns no longer owned by Lifecycle', async () => {
+  const cases = JSON.parse(await readFile(activationCasesPath, 'utf8'))
+  const expected = new Map(cases.map((entry) => [entry.id, entry.expected]))
+  assert.deepEqual(expected.get('skill-installation'), {
+    disposition: 'delegate', selection: 'skill-installer', workRunAction: 'none',
+  })
+  assert.equal(expected.get('explicit-app-store-target')?.selection, 'porta-mobile-store-release')
+  assert.equal(expected.get('explicit-vercel-target')?.selection, 'deliver-product')
+  assert.equal(expected.get('single-file-phone-preview')?.selection, 'porta-agent-artifact-handoff')
+  assert.equal(expected.get('inbox-file-delivery')?.selection, 'porta-agent-artifact-handoff')
+  assert.equal(expected.get('cross-user-file-send')?.disposition, 'ignore')
 })

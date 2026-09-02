@@ -1,0 +1,22 @@
+[
+  {
+    "id": "single-file-phone-preview",
+    "message": "把刚才生成的图片发到我自己的 Porta 手机并立即预览。",
+    "expected": { "disposition": "activate", "intent": "preview-now" }
+  },
+  {
+    "id": "multi-file-phone-preview",
+    "message": "把这三张图片逐个发到我的 Porta 手机预览。",
+    "expected": { "disposition": "activate", "intent": "preview-now" }
+  },
+  {
+    "id": "inbox-file-delivery",
+    "message": "把这个 PDF 放到我自己的 Porta Inbox，不要立即弹窗。",
+    "expected": { "disposition": "activate", "intent": "inbox" }
+  },
+  {
+    "id": "cross-user-file-send",
+    "message": "把这份报告发给另一个 Porta 用户。",
+    "expected": { "disposition": "ignore", "intent": "none" }
+  }
+]

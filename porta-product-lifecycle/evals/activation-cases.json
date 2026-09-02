@@ -79,8 +79,8 @@
       "releaseTarget": "porta"
     },
     "expected": {
-      "disposition": "ignore",
-      "selection": "none",
+      "disposition": "delegate",
+      "selection": "skill-installer",
       "workRunAction": "none"
     },
     "category": "installation"
@@ -263,8 +263,8 @@
       "releaseTarget": "vercel"
     },
     "expected": {
-      "disposition": "ignore",
-      "selection": "none",
+      "disposition": "delegate",
+      "selection": "deliver-product",
       "workRunAction": "none"
     },
     "category": "other-release-target"
@@ -277,8 +277,8 @@
       "releaseTarget": "app-store"
     },
     "expected": {
-      "disposition": "ignore",
-      "selection": "none",
+      "disposition": "delegate",
+      "selection": "porta-mobile-store-release",
       "workRunAction": "none"
     },
     "category": "other-release-target"
@@ -291,8 +291,8 @@
       "releaseTarget": "npm"
     },
     "expected": {
-      "disposition": "ignore",
-      "selection": "none",
+      "disposition": "delegate",
+      "selection": "deliver-product",
       "workRunAction": "none"
     },
     "category": "other-release-target"
@@ -316,8 +316,8 @@
     "message": "把刚生成的评审图片发送到我连接的 Porta 手机并立即弹框预览。",
     "context": { "samePortaUser": true, "connectedHost": true },
     "expected": {
-      "disposition": "activate",
-      "selection": "agent-artifact-handoff-preview-now",
+      "disposition": "delegate",
+      "selection": "porta-agent-artifact-handoff",
       "workRunAction": "none"
     },
     "category": "agent-artifact-handoff"
@@ -327,8 +327,8 @@
     "message": "把这三张图片逐张发到 Porta 手机，每张都需要预览提醒。",
     "context": { "samePortaUser": true, "connectedHost": true, "fileCount": 3 },
     "expected": {
-      "disposition": "activate",
-      "selection": "agent-artifact-handoff-preview-now",
+      "disposition": "delegate",
+      "selection": "porta-agent-artifact-handoff",
       "requestCount": 3,
       "workRunAction": "none"
     },
@@ -339,8 +339,8 @@
     "message": "把报告放进我 Porta 的 Inbox，暂时不要弹框。",
     "context": { "samePortaUser": true, "connectedHost": true },
     "expected": {
-      "disposition": "activate",
-      "selection": "agent-artifact-handoff-inbox",
+      "disposition": "delegate",
+      "selection": "porta-agent-artifact-handoff",
       "workRunAction": "none"
     },
     "category": "agent-artifact-handoff"
@@ -350,7 +350,7 @@
     "message": "把这个文件发送到另一个 Porta 用户的手机。",
     "context": { "samePortaUser": false },
     "expected": {
-      "disposition": "clarify",
+      "disposition": "ignore",
       "selection": "none",
       "workRunAction": "none"
     },

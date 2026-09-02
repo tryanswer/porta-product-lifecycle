@@ -14,7 +14,7 @@ test('Skill routes package-bound capability sidecars through read-only negotiati
 
   assert.match(skill, /product-capability-negotiation-v1\.md/u)
   assert.match(skill, /capability-negotiate --spec/u)
-  assert.match(skill, /never\s+activates capabilities or creates a WorkRun/iu)
+  assert.match(skill, /do not execute a constructor.*activate a capability.*create a WorkRun/isu)
   assert.match(reference, /separate strict sidecar/iu)
   assert.match(reference, /Product Package v1 and v2\s+remain unchanged/iu)
   assert.match(reference, /hostPolicyRef/u)

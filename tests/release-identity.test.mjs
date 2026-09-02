@@ -9,7 +9,7 @@ const CLIENT = new URL(
   import.meta.url,
 )
 
-test('public release identity is internally consistent', async () => {
+test('development identity and latest immutable release are internally explicit', async () => {
   const [readme, skill, client] = await Promise.all([
     readFile(README, 'utf8'),
     readFile(SKILL, 'utf8'),
@@ -18,10 +18,11 @@ test('public release identity is internally consistent', async () => {
 
   assert.match(skill, /^---\nname: porta-product-lifecycle\n/mu)
   assert.match(client, /const SKILL_ID = 'porta-product-lifecycle'/u)
-  assert.match(client, /const SKILL_VERSION = '1\.0\.6'/u)
-  assert.match(client, /COMPATIBLE_STATE_SKILL_VERSIONS = new Set\(\['1\.0\.0', '1\.0\.1', '1\.0\.2', '1\.0\.3', '1\.0\.4', '1\.0\.5', SKILL_VERSION\]\)/u)
-  assert.match(readme, /immutable release `porta-product-lifecycle-v1\.0\.6`/u)
-  assert.match(readme, /git clone --branch porta-product-lifecycle-v1\.0\.6/u)
+  assert.match(client, /const SKILL_VERSION = '1\.1\.0'/u)
+  assert.match(client, /COMPATIBLE_STATE_SKILL_VERSIONS = new Set\(\['1\.0\.0', '1\.0\.1', '1\.0\.2', '1\.0\.3', '1\.0\.4', '1\.0\.5', '1\.0\.6', '1\.0\.7', SKILL_VERSION\]\)/u)
+  assert.match(readme, /immutable release `porta-product-lifecycle-v1\.0\.7`/u)
+  assert.match(readme, /git clone --branch porta-product-lifecycle-v1\.0\.7/u)
+  assert.match(readme, /main branch currently develops Lifecycle `1\.1\.0`/u)
   assert.match(readme, /https:\/\/github\.com\/tryanswer\/porta-product-lifecycle\.git/u)
   assert.doesNotMatch(readme, /porta-workflow-v/u)
 })
@@ -32,7 +33,10 @@ test('public release contains the complete current Skill subtree', async () => {
     'references/product-assets-v1.md',
     'references/product-capability-negotiation-v1.md',
     'references/product-package-v2.md',
+    'scripts/lifecycle-route.mjs',
+    'scripts/evaluate-lifecycle-routes.mjs',
     'scripts/product-capability-negotiation.mjs',
+    'tests/lifecycle-route.test.mjs',
     'tests/product-capability-negotiation.test.mjs',
     'tests/product-capability-skill-contract.test.mjs',
   ].map((entry) => access(new URL(`../porta-product-lifecycle/${entry}`, import.meta.url))))
@@ -45,6 +49,7 @@ test('installation and planning cannot be described as WorkRun authority', async
   ])
 
   assert.match(readme, /never\nstart a WorkRun or authorize deployment or distribution/u)
-  assert.match(skill, /Installation, discovery, and a lifecycle plan alone never authorize a WorkRun/u)
-  assert.match(skill, /current explicit intent/u)
+  assert.match(skill, /Skill installation or discovery.*`skill-installer` or the Provider-native mechanism/u)
+  assert.match(skill, /These commands do not execute a constructor.*create a WorkRun/su)
+  assert.match(skill, /Current explicit mutation\s+intent comes only from the current user request/iu)
 })

@@ -6,29 +6,35 @@ const skillUrl = new URL('../SKILL.md', import.meta.url)
 const routingUrl = new URL('../references/skill-routing-v1.md', import.meta.url)
 const evalsUrl = new URL('../evals/lifecycle-routing-cases.json', import.meta.url)
 const metadataUrl = new URL('../agents/openai.yaml', import.meta.url)
-const artifactHandoffUrl = new URL('../references/agent-artifact-handoff-v1.md', import.meta.url)
+const artifactSkillUrl = new URL('../../porta-agent-artifact-handoff/SKILL.md', import.meta.url)
+const artifactHandoffUrl = new URL('../../porta-agent-artifact-handoff/references/agent-artifact-handoff-v1.md', import.meta.url)
 const productPackageUrl = new URL('../references/product-package-v1.md', import.meta.url)
 const productAssetsUrl = new URL('../references/product-assets-v1.md', import.meta.url)
 
-test('Lifecycle requires one phase routing contract before phase work begins', async () => {
+test('Lifecycle settles deterministic ownership before loading phase-specific routing', async () => {
   const skill = await readFile(skillUrl, 'utf8')
   const routing = await readFile(routingUrl, 'utf8')
 
-  assert.match(skill, /Read \[references\/skill-routing-v1\.md\].*before entering any lifecycle phase/su)
-  assert.match(skill, /Do not replace selected sub-Skills with generic model knowledge/u)
+  assert.match(skill, /Do not perform phase work before the route receipt is settled/u)
+  assert.match(skill, /route-plan --spec.*--out <route-receipt\.json>/u)
+  assert.match(skill, /Development involving multiple concerns or Skill discovery:\s+\[skill-routing-v1\.md\]/u)
+  assert.match(skill, /Do not preload unrelated\s+references/u)
   assert.match(routing, /define -> develop\/verify -> materialize -> preview\/accept -> deploy -> distribute -> operate\/iterate/u)
   assert.match(routing, /Route every entered phase before doing phase work/u)
   assert.match(routing, /Skill Route Receipt/u)
 })
 
 test('development evidence can use privacy-bounded Agent Artifact Handoff without changing lifecycle phase', async () => {
-  const skill = await readFile(skillUrl, 'utf8')
-  const handoff = await readFile(artifactHandoffUrl, 'utf8')
-  assert.match(skill, /references\/agent-artifact-handoff-v1\.md/u)
-  assert.match(skill, /presentation of development evidence, not Product[\s\S]*deployment, Distribution, or publication/u)
+  const [skill, artifactSkill, handoff] = await Promise.all([
+    readFile(skillUrl, 'utf8'),
+    readFile(artifactSkillUrl, 'utf8'),
+    readFile(artifactHandoffUrl, 'utf8'),
+  ])
+  assert.match(skill, /Same-user file presentation.*`porta-agent-artifact-handoff`/u)
+  assert.match(artifactSkill, /Own only the same-user presentation handoff/u)
   assert.match(handoff, /\.porta\/artifacts\/<request-id>/u)
-  assert.match(handoff, /does not create a WorkRun/u)
-  assert.match(handoff, /must not contain an absolute\s+remote path or file bytes/u)
+  assert.match(handoff, /does not create a product package, lifecycle run/u)
+  assert.match(handoff, /must not contain an absolute\s+remote\s+path or file bytes/u)
   assert.match(handoff, /phone receipt, preview, or save[\s\S]*separate App\/device observations/u)
 })
 
@@ -66,7 +72,8 @@ test('materialization establishes honest product identity assets with a backward
   const productPackage = await readFile(productPackageUrl, 'utf8')
   const productAssets = await readFile(productAssetsUrl, 'utf8')
 
-  assert.match(skill, /Read\s+\[references\/product-assets-v1\.md\].*before Product Package settlement/su)
+  assert.match(skill, /\[product-package-v2\.md\].*\[product-assets-v1\.md\]/su)
+  assert.match(skill, /classify asset applicability, reject template\/dependency branding/iu)
   assert.match(routing, /establish product identity assets before Product Package settlement/iu)
   assert.match(productPackage, /explicit project logo.*Web App Manifest.*apple-touch-icon.*favicon/isu)
   assert.match(productPackage, /deterministic monogram/iu)
@@ -123,6 +130,7 @@ test('routing pressure cases cover shortcuts across the complete lifecycle', asy
 
 test('Provider metadata prompts the phase router instead of a generic pipeline', async () => {
   const metadata = await readFile(metadataUrl, 'utf8')
-  assert.match(metadata, /Route each requested product phase through the narrowest applicable Skills and native adapters/u)
-  assert.match(metadata, /separate package, Local Product Release, deployment, distribution, and availability evidence/u)
+  assert.match(metadata, /Use \$porta-product-lifecycle to route this concrete product outcome through one validated phase/u)
+  assert.match(metadata, /preserve exact target and Run authority/u)
+  assert.match(metadata, /report only evidence observed for that phase/u)
 })

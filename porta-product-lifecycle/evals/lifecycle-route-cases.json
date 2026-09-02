@@ -1,0 +1,201 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "develop-current-product",
+      "message": "继续完成当前产品，并验证核心用户路径。",
+      "routeInput": {
+        "schemaVersion": 1,
+        "outcome": "develop",
+        "object": { "kind": "product", "ref": "product_current" },
+        "target": { "kind": "none", "ref": null, "source": "none" },
+        "portaContext": "trusted",
+        "explicitMutationIntent": false,
+        "runKey": null
+      },
+      "expected": { "disposition": "act", "phase": "develop-verify", "authority": "project-write", "owner": { "skill": "porta-product-lifecycle" }, "workRun": { "policy": "none" } }
+    },
+    {
+      "id": "ambiguous-deploy",
+      "message": "部署这个产品。",
+      "routeInput": {
+        "schemaVersion": 1,
+        "outcome": "deploy",
+        "object": { "kind": "product", "ref": "product_current" },
+        "target": { "kind": "unknown", "ref": null, "source": "none" },
+        "portaContext": "trusted",
+        "explicitMutationIntent": true,
+        "runKey": null
+      },
+      "expected": { "disposition": "clarify", "reasonCode": "deployment_target_required", "owner": null, "workRun": { "policy": "none" } }
+    },
+    {
+      "id": "porta-local-release",
+      "message": "部署到这台 Mac，并让 Porta 手机可以打开，不发布公网。",
+      "routeInput": {
+        "schemaVersion": 1,
+        "outcome": "deploy",
+        "object": { "kind": "product", "ref": "product_current" },
+        "target": { "kind": "porta-local", "ref": "product_current", "source": "user" },
+        "portaContext": "trusted",
+        "explicitMutationIntent": true,
+        "runKey": "run_11111111-1111-4111-8111-111111111111"
+      },
+      "expected": { "disposition": "act", "phase": "deploy", "owner": { "adapter": "local-product-release" }, "workRun": { "policy": "new-exact" }, "allowedCommands": ["local-release-register", "local-release-status"] }
+    },
+    {
+      "id": "porta-web-release",
+      "message": "把当前候选正式发布到 Porta Web。",
+      "routeInput": {
+        "schemaVersion": 1,
+        "outcome": "distribute",
+        "object": { "kind": "product", "ref": "product_current" },
+        "target": { "kind": "porta-web", "ref": "product_current", "source": "user" },
+        "portaContext": "trusted",
+        "explicitMutationIntent": true,
+        "runKey": "run_22222222-2222-4222-8222-222222222222"
+      },
+      "expected": { "disposition": "act", "phase": "distribute", "owner": { "adapter": "porta-web-release" }, "workRun": { "policy": "new-exact" } }
+    },
+    {
+      "id": "app-store-release",
+      "message": "将这个 iOS 候选提交到 App Store。",
+      "routeInput": {
+        "schemaVersion": 1,
+        "outcome": "distribute",
+        "object": { "kind": "product", "ref": "product_current" },
+        "target": { "kind": "app-store", "ref": "app_current", "source": "user" },
+        "portaContext": "absent",
+        "explicitMutationIntent": true,
+        "runKey": null
+      },
+      "expected": { "disposition": "delegate", "owner": { "skill": "porta-mobile-store-release", "adapter": "app-store" }, "workRun": { "policy": "none" } }
+    },
+    {
+      "id": "external-host-deploy",
+      "message": "部署到我已授权的外部主机。",
+      "routeInput": {
+        "schemaVersion": 1,
+        "outcome": "deploy",
+        "object": { "kind": "product", "ref": "product_current" },
+        "target": { "kind": "external", "ref": "host_authorized", "source": "user" },
+        "portaContext": "absent",
+        "explicitMutationIntent": true,
+        "runKey": null
+      },
+      "expected": { "disposition": "delegate", "phase": "deploy", "owner": { "skill": "deliver-product" }, "workRun": { "policy": "none" } }
+    },
+    {
+      "id": "same-user-file-preview",
+      "message": "把这三张图片发到我自己的 Porta 手机上立即预览。",
+      "routeInput": {
+        "schemaVersion": 1,
+        "outcome": "artifact-handoff",
+        "object": { "kind": "artifact", "ref": "artifact_current" },
+        "target": { "kind": "porta-device", "ref": "current-user", "source": "trusted-runtime" },
+        "portaContext": "trusted",
+        "explicitMutationIntent": false,
+        "runKey": null
+      },
+      "expected": { "disposition": "delegate", "phase": "outside-lifecycle", "owner": { "skill": "porta-agent-artifact-handoff" }, "workRun": { "policy": "none" } }
+    },
+    {
+      "id": "skill-installation",
+      "message": "安装 Porta Product Lifecycle skill。",
+      "routeInput": {
+        "schemaVersion": 1,
+        "outcome": "skill-install",
+        "object": { "kind": "skill", "ref": "porta-product-lifecycle" },
+        "target": { "kind": "none", "ref": null, "source": "none" },
+        "portaContext": "trusted",
+        "explicitMutationIntent": false,
+        "runKey": null
+      },
+      "expected": { "disposition": "delegate", "owner": { "skill": "skill-installer" }, "workRun": { "policy": "none" } }
+    },
+    {
+      "id": "inspect-retained-run",
+      "message": "查看 run_33333333-3333-4333-8333-333333333333 的状态，不要新建 Run。",
+      "routeInput": {
+        "schemaVersion": 1,
+        "outcome": "inspect-run",
+        "object": { "kind": "run", "ref": "run_33333333-3333-4333-8333-333333333333" },
+        "target": { "kind": "none", "ref": null, "source": "none" },
+        "portaContext": "trusted",
+        "explicitMutationIntent": false,
+        "runKey": "run_33333333-3333-4333-8333-333333333333"
+      },
+      "expected": { "disposition": "act", "phase": "retained-run-control", "authority": "read-only", "workRun": { "policy": "resume-exact" }, "allowedCommands": ["release-status", "show"] }
+    },
+    {
+      "id": "cancel-without-current-intent",
+      "message": "上次讨论过取消，但这次只查看保留 Run。",
+      "routeInput": {
+        "schemaVersion": 1,
+        "outcome": "cancel-run",
+        "object": { "kind": "run", "ref": "run_44444444-4444-4444-8444-444444444444" },
+        "target": { "kind": "none", "ref": null, "source": "none" },
+        "portaContext": "trusted",
+        "explicitMutationIntent": false,
+        "runKey": "run_44444444-4444-4444-8444-444444444444"
+      },
+      "expected": { "disposition": "clarify", "reasonCode": "run_cancellation_intent_required", "workRun": { "policy": "none" } }
+    },
+    {
+      "id": "operate-without-target",
+      "message": "看看产品上线后的健康和成本。",
+      "routeInput": {
+        "schemaVersion": 1,
+        "outcome": "operate",
+        "object": { "kind": "product", "ref": "product_current" },
+        "target": { "kind": "unknown", "ref": null, "source": "none" },
+        "portaContext": "absent",
+        "explicitMutationIntent": false,
+        "runKey": null
+      },
+      "expected": { "disposition": "clarify", "reasonCode": "operation_target_required", "workRun": { "policy": "none" } }
+    },
+    {
+      "id": "package-current-product",
+      "message": "把已验证构建适配成 Porta Product Package。",
+      "routeInput": {
+        "schemaVersion": 1,
+        "outcome": "package",
+        "object": { "kind": "product", "ref": "product_current" },
+        "target": { "kind": "none", "ref": null, "source": "none" },
+        "portaContext": "trusted",
+        "explicitMutationIntent": false,
+        "runKey": null
+      },
+      "expected": { "disposition": "act", "phase": "materialize", "owner": { "adapter": "product-package" }, "workRun": { "policy": "none" }, "allowedCommands": ["build-execution-plan", "lifecycle-plan", "package-validate", "package-verify"] }
+    },
+    {
+      "id": "preview-current-product",
+      "message": "在本地预览当前产品候选并验收正常入口。",
+      "routeInput": {
+        "schemaVersion": 1,
+        "outcome": "preview",
+        "object": { "kind": "product", "ref": "product_current" },
+        "target": { "kind": "none", "ref": null, "source": "none" },
+        "portaContext": "trusted",
+        "explicitMutationIntent": false,
+        "runKey": null
+      },
+      "expected": { "disposition": "delegate", "phase": "preview-accept", "owner": { "skill": "deliver-product", "adapter": "product-preview" }, "workRun": { "policy": "none" } }
+    },
+    {
+      "id": "private-porta-materialization",
+      "message": "在 Porta 中物化一个长期私有 Product 和 Revision，不部署也不公开发布。",
+      "routeInput": {
+        "schemaVersion": 1,
+        "outcome": "materialize-private",
+        "object": { "kind": "product", "ref": "product_current" },
+        "target": { "kind": "porta-web", "ref": "product_current", "source": "trusted-runtime" },
+        "portaContext": "trusted",
+        "explicitMutationIntent": true,
+        "runKey": "run_55555555-5555-4555-8555-555555555555"
+      },
+      "expected": { "disposition": "act", "phase": "materialize", "owner": { "adapter": "private-product" }, "workRun": { "policy": "new-exact" }, "allowedCommands": ["private-product-register", "private-product-status"] }
+    }
+  ]
+}

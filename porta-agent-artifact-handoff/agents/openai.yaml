@@ -1,0 +1,7 @@
+interface:
+  display_name: "Porta Agent Artifact Handoff"
+  short_description: "Send generated files to your Porta phone"
+  default_prompt: "Use $porta-agent-artifact-handoff to send the exact requested files to my connected Porta phone and keep publish, Inbox, preview, and save evidence separate."
+
+policy:
+  allow_implicit_invocation: true

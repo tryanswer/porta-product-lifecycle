@@ -35,6 +35,11 @@ import {
   readAndNegotiateProductCapabilities,
 } from './product-capability-negotiation.mjs'
 import { readAndPlanProductLifecycle } from './lifecycle-plan.mjs'
+import {
+  LifecycleRouteValidationError,
+  readAndCheckLifecycleRoute,
+  readAndPlanLifecycleRoute,
+} from './lifecycle-route.mjs'
 
 const execFile = promisify(execFileCallback)
 const CLIENT_STATE_VERSION = 1
@@ -46,8 +51,8 @@ const MINIMUM_SCENE_PACK_READINESS_RUNTIME = '1.16.1'
 const MINIMUM_LOCAL_PRODUCT_RELEASE_RUNTIME = '1.16.6'
 const MINIMUM_AGENT_ARTIFACT_RUNTIME = '1.17.7'
 const SKILL_ID = 'porta-product-lifecycle'
-const SKILL_VERSION = '1.0.7'
-const COMPATIBLE_STATE_SKILL_VERSIONS = new Set(['1.0.0', '1.0.1', '1.0.2', '1.0.3', '1.0.4', '1.0.5', '1.0.6', SKILL_VERSION])
+const SKILL_VERSION = '1.1.0'
+const COMPATIBLE_STATE_SKILL_VERSIONS = new Set(['1.0.0', '1.0.1', '1.0.2', '1.0.3', '1.0.4', '1.0.5', '1.0.6', '1.0.7', SKILL_VERSION])
 const MAXIMUM_BRIDGE_OUTPUT_BYTES = 1024 * 1024
 const MAXIMUM_SPEC_BYTES = 1024 * 1024
 const MAXIMUM_SCENE_PACK_READINESS_SPEC_BYTES = 24 * 1024
@@ -113,6 +118,30 @@ async function main() {
   }
   if (command === 'scene-pack-readiness-observe') {
     await observeScenePackReadiness(tokens)
+    return
+  }
+  if (command === 'route-plan') {
+    const options = parseOptions(tokens, ['out', 'spec'])
+    const route = await readAndPlanLifecycleRoute(options.spec)
+    const receiptFile = options.out ? resolve(options.out) : null
+    if (receiptFile) await writeJsonAtomic(receiptFile, route)
+    writeResult({
+      ...route,
+      ok: true,
+      ...(receiptFile ? { receiptFile } : {}),
+      skillId: SKILL_ID,
+      skillVersion: SKILL_VERSION,
+    })
+    return
+  }
+  if (command === 'route-check') {
+    const options = parseOptions(tokens, ['command', 'receipt', 'run-key'])
+    const check = await readAndCheckLifecycleRoute(
+      options.receipt,
+      options.command,
+      options['run-key'] ?? null,
+    )
+    writeResult({ ...check, skillId: SKILL_ID, skillVersion: SKILL_VERSION })
     return
   }
   if (command === 'artifact-publish') {
@@ -228,6 +257,9 @@ async function main() {
 
 function helpText() {
   return `Porta Product Lifecycle client ${SKILL_VERSION}\n\n` +
+    `Lifecycle route (read-only; settles one phase owner and never starts a WorkRun):\n` +
+    `  porta-product-lifecycle.mjs route-plan --spec <json-file> [--out <route-receipt.json>]\n` +
+    `  porta-product-lifecycle.mjs route-check --receipt <route-receipt.json> --command <client-command> [--run-key <run-key>]\n\n` +
     `Build execution plan (GitHub is optional; planning never reads source or starts a WorkRun):\n` +
     `  porta-product-lifecycle.mjs build-execution-plan --spec <json-file>\n\n` +
     `Product Package (validation never starts a WorkRun):\n` +
@@ -308,7 +340,10 @@ async function publishAgentArtifact(tokens) {
     status.protocolVersion !== 1 || status.traceId !== statusTraceId ||
     !isRuntimeAtLeast(status.runtimeVersion, MINIMUM_AGENT_ARTIFACT_RUNTIME)
   ) {
-    throw new ClientError('workflow_incompatible', 'Agent Bridge Runtime 1.17.0 or newer is required for Agent Artifact Handoff.')
+    throw new ClientError(
+      'workflow_incompatible',
+      `Agent Bridge Runtime ${MINIMUM_AGENT_ARTIFACT_RUNTIME} or newer is required for Agent Artifact Handoff.`,
+    )
   }
   const traceId = `porta-skill-artifact-publish:${randomUUID()}`
   const receipt = await runBridge([
@@ -2323,7 +2358,8 @@ function writeResult(value) {
 function writeError(error) {
   const normalized = error instanceof ProductPackageValidationError ||
     error instanceof BuildExecutionValidationError ||
-    error instanceof ProductCapabilityNegotiationError
+    error instanceof ProductCapabilityNegotiationError ||
+    error instanceof LifecycleRouteValidationError
     ? new ClientError(error.code, error.message)
     : error instanceof ClientError
     ? error

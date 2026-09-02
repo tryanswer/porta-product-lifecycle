@@ -38,7 +38,24 @@ semver update of `porta-workflow`. Historical Workflow records remain
 readable through Porta's legacy adapter, while new runs and receipts use only
 `porta-product-lifecycle`.
 
+The main branch currently develops Lifecycle `1.1.0`, including deterministic
+route receipts and the independently discoverable
+`porta-agent-artifact-handoff` companion Skill. Until an immutable `1.1.0`
+release is tagged and verified, `1.0.7` remains the installable release; do not
+install the moving main branch as a user-level Skill.
+
 ## Package and plan
+
+Settle one requested outcome before phase work:
+
+```bash
+node porta-product-lifecycle/scripts/porta-product-lifecycle.mjs \
+  route-plan --spec /absolute/path/route.json \
+  --out /absolute/path/route-receipt.json
+node porta-product-lifecycle/scripts/porta-product-lifecycle.mjs \
+  route-check --receipt /absolute/path/route-receipt.json \
+  --command package-verify
+```
 
 Validate an exact Product Package declaration:
 
@@ -71,8 +88,16 @@ installation, and discovery do not grant publication authority.
 ## Verify
 
 ```bash
-node --test tests/*.test.mjs porta-product-lifecycle/tests/*.test.mjs
+node porta-product-lifecycle/scripts/evaluate-lifecycle-routes.mjs
+node --test tests/*.test.mjs porta-product-lifecycle/tests/*.test.mjs \
+  porta-agent-artifact-handoff/tests/*.test.mjs
 ```
+
+To score real Provider classification behavior, write one JSONL record per
+case as `{"id":"<case-id>","routeInput":{...}}`, then run
+`score-lifecycle-route-responses.mjs --responses <file>`. Deterministic corpus
+success proves the router, not a model; a Provider is only evaluated when its
+actual responses are supplied.
 
 ## License
 
