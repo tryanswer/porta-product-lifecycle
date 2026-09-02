@@ -76,6 +76,25 @@ credential and never replaces Bridge/provider authorization or readback. Use
 an exact retained Run; `inspect-run` stays read-only and `cancel-run` authorizes
 only cancellation.
 
+### Porta App handoff gate
+
+When the current request contains a
+`porta-product-lifecycle-app-handoff` envelope from Porta Product Preview,
+read [app-handoff-v1.md](references/app-handoff-v1.md) before route planning.
+Treat its exact Preview, Host, workspace, terminal session, outcome, target,
+and opaque handoff ref as one indivisible routing boundary. Allocate the one
+new exact Run key declared by that envelope, copy only its route fields into
+the v1 route input, and then settle the Route Receipt.
+
+An App handoff cannot change target in place. If a later message requests a
+different outcome or target before the handoff reaches its requested terminal
+state, supersede the handoff and perform no new-target mutation from it. Keep
+any retained Run explicit, do not delegate the changed target to another
+deployment Skill or repository script, and require a fresh destination
+confirmation in Porta Product Preview. A handoff envelope and Route Receipt
+are local anti-drift evidence, not security credentials; Bridge/provider
+admission remains authoritative.
+
 ## Ownership map
 
 | Requested outcome | Lead owner after route settlement |
@@ -102,6 +121,8 @@ Read only the references required by the settled route:
 
 - Router maintenance or a route-rejection diagnosis:
   [lifecycle-route-receipt-v1.md](references/lifecycle-route-receipt-v1.md).
+- A Porta Product Preview App handoff or target-switch diagnosis:
+  [app-handoff-v1.md](references/app-handoff-v1.md).
 - Any Bridge, provider, deployment, distribution, or retained-run action:
   [protocol-reliability-v1.md](references/protocol-reliability-v1.md).
 - Development involving multiple concerns or Skill discovery:
@@ -219,6 +240,8 @@ mismatch, timeout, or uncertain retained Run.
 - Never infer deployment from preview, distribution from deployment, approval
   from submission, or availability from provider acceptance.
 - Never invent a target because a product type supports it.
+- Never repurpose, delegate, or silently rewrite an active Porta App handoff to
+  a different outcome or target; supersede it and obtain a fresh confirmation.
 - Never replace an exact retained Run, silently reuse stale receipts, or commit
   `.porta/` runtime state unless the repository explicitly owns it.
 

@@ -199,6 +199,21 @@
     "category": "local-receipt-drift-guard"
   },
   {
+    "id": "app-local-handoff-target-switch",
+    "message": "Porta App 已确认私有部署到当前 Host，但在 local-ready 前又收到‘部署官网’。",
+    "context": {
+      "activeAppHandoff": "local-release",
+      "portaManagedProject": true,
+      "releaseTarget": "porta-web"
+    },
+    "expected": {
+      "disposition": "clarify",
+      "selection": "none",
+      "workRunAction": "preserve-and-report"
+    },
+    "category": "app-handoff-supersession"
+  },
+  {
     "id": "ambiguous-deploy",
     "message": "部署这个项目。",
     "context": {

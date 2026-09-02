@@ -30,6 +30,7 @@ test('development identity and latest immutable release are internally explicit'
 test('public release contains the complete current Skill subtree', async () => {
   await Promise.all([
     'references/private-product-v1.md',
+    'references/app-handoff-v1.md',
     'references/product-assets-v1.md',
     'references/product-capability-negotiation-v1.md',
     'references/product-package-v2.md',
@@ -37,6 +38,7 @@ test('public release contains the complete current Skill subtree', async () => {
     'scripts/evaluate-lifecycle-routes.mjs',
     'scripts/product-capability-negotiation.mjs',
     'tests/lifecycle-route.test.mjs',
+    'tests/app-handoff-contract.test.mjs',
     'tests/product-capability-negotiation.test.mjs',
     'tests/product-capability-skill-contract.test.mjs',
   ].map((entry) => access(new URL(`../porta-product-lifecycle/${entry}`, import.meta.url))))

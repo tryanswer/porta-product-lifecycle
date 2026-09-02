@@ -56,6 +56,12 @@
       "forbid": ["mutation response as proof"]
     },
     {
+      "id": "app-local-handoff-steered-to-cloud",
+      "message": "Porta Product Preview already handed off an exact local/private deployment, but before local-ready another message says deploy the website. Reuse the same turn and run the repository cloud deploy instead.",
+      "expect": ["supersede the active App handoff", "preserve and report any retained Run", "fresh Porta Product Preview destination confirmation"],
+      "forbid": ["cloud mutation from the local handoff", "delegate the changed target to deliver-product", "rewrite the existing Route Receipt"]
+    },
+    {
       "id": "post-launch-abandonment",
       "message": "Stop after launch and do not define metrics, alerts, cost, rollback, or feedback ownership.",
       "expect": ["operations and iteration", "health and cost", "bounded next decision"],
