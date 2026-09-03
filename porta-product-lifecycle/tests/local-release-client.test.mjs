@@ -82,12 +82,16 @@ if (command === 'capabilities') {
       'product-materialization-status'
     ],
     eventContractVersion: 2, ok: true, platformSupported: true, protocolVersion: 1,
-    runtimeVersion: process.env.FAKE_RUNTIME_VERSION || '1.16.6', staleAfterSeconds: 900,
+    runtimeVersion: process.env.FAKE_RUNTIME_VERSION || '1.17.9', staleAfterSeconds: 900,
     traceId: option('--trace-id'), type: 'workflow-capabilities', workflowProtocolVersion: 2
   }))
   process.exit(0)
 }
 if (command === 'product-work-begin') {
+  if (process.env.FAKE_REQUIRE_EXPECTED_HOST === '1' && !args.includes('--expected-host-id')) {
+    process.stderr.write(JSON.stringify({ code: 'project_context_ambiguous', message: 'expected Host required' }))
+    process.exit(6)
+  }
   console.log(JSON.stringify({
     created: true, ok: true, projectContext: { generation: 1, projectRef: 'project_fixture', rootPath: option('--cwd') },
     protocolVersion: 1, provider: option('--provider'), providerSessionId: option('--provider-session-id'),
@@ -183,7 +187,7 @@ function withRouteReceipt(value, args) {
     schemaVersion: 1,
     target: privateProduct
       ? { kind: 'porta-web', ref: 'product_current', source: 'trusted-runtime' }
-      : { kind: 'porta-local', ref: 'product_current', source: 'trusted-runtime' },
+      : { kind: 'porta-local', ref: 'host_fixture_1234', source: 'trusted-runtime' },
   })
   routeReceiptSequence += 1
   const receiptPath = join(value.root, `.route-receipt-${routeReceiptSequence}.json`)
@@ -210,7 +214,9 @@ test('registers one verified local package through non-publish Product Work', as
       'capabilities', 'product-work-begin', 'product-materialization-register',
     ])
     assert.equal(calls[1][calls[1].indexOf('--purpose') + 1], 'materialization')
+    assert.equal(calls[1][calls[1].indexOf('--expected-host-id') + 1], 'host_fixture_1234')
     assert.equal(calls[2][calls[2].indexOf('--work-run-id') + 1], 'workrun_33333333-3333-4333-8333-333333333333')
+    assert.equal(calls[2][calls[2].indexOf('--expected-host-id') + 1], 'host_fixture_1234')
     const registrationPayload = JSON.parse(Buffer.from(
       calls[2][calls[2].indexOf('--payload') + 1],
       'base64url',
@@ -221,6 +227,7 @@ test('registers one verified local package through non-publish Product Work', as
     assert.equal(registrationPayload.productRef, null)
     const statePath = receipt.stateFile
     assert.equal((await stat(statePath)).mode & 0o777, 0o600)
+    assert.equal(JSON.parse(await readFile(statePath, 'utf8')).expectedHostId, 'host_fixture_1234')
   } finally {
     await value.cleanup()
   }
@@ -241,6 +248,44 @@ test('reuses the same bounded operation after registration response loss', async
     const calls = (await readFile(value.log, 'utf8')).trim().split('\n').map(JSON.parse)
     assert.equal(calls.filter((call) => call[1] === 'product-work-begin').length, 1)
     assert.equal(calls.filter((call) => call[1] === 'product-materialization-register').length, 2)
+  } finally {
+    await value.cleanup()
+  }
+})
+
+test('adds the route Host when retrying an unadmitted 1.0.x recovery state', async () => {
+  const value = await fixture()
+  try {
+    const args = [
+      'local-release-register', '--run-key', runKey, '--spec', value.specPath,
+      '--package-root', value.packageRoot, '--provider', 'codex',
+      '--provider-session-id', 'session_fixture_1234', '--cwd', value.project,
+    ]
+    const legacyRoute = planLifecycleRoute({
+      explicitMutationIntent: true,
+      object: { kind: 'product', ref: 'product_current' },
+      outcome: 'deploy',
+      portaContext: 'trusted',
+      runKey,
+      schemaVersion: 1,
+      target: { kind: 'local-machine', ref: 'local_fixture', source: 'trusted-runtime' },
+    })
+    const legacyReceiptPath = join(value.root, 'legacy-local-route.json')
+    await writeFile(legacyReceiptPath, JSON.stringify(legacyRoute))
+    const first = run(value, [...args, '--route-receipt', legacyReceiptPath], {
+      FAKE_REQUIRE_EXPECTED_HOST: '1',
+    })
+    assert.notEqual(first.status, 0)
+    assert.equal(JSON.parse(first.stderr).code, 'project_context_ambiguous')
+
+    const resumed = run(value, args, { FAKE_REQUIRE_EXPECTED_HOST: '1' })
+    assert.equal(resumed.status, 0, resumed.stderr)
+    const state = JSON.parse(await readFile(JSON.parse(resumed.stdout).stateFile, 'utf8'))
+    assert.equal(state.runKey, runKey)
+    assert.equal(state.expectedHostId, 'host_fixture_1234')
+    const calls = (await readFile(value.log, 'utf8')).trim().split('\n').map(JSON.parse)
+    assert.equal(calls.filter((call) => call[1] === 'product-work-begin').length, 2)
+    assert.equal(calls.filter((call) => call[1] === 'product-materialization-register').length, 1)
   } finally {
     await value.cleanup()
   }
@@ -289,6 +334,8 @@ test('registers and settles one verified private Product without publication int
     assert.deepEqual(calls.map((call) => call[1]), [
       'capabilities', 'product-work-begin', 'product-materialization-register',
     ])
+    assert.equal(calls[1].includes('--expected-host-id'), false)
+    assert.equal(calls[2].includes('--expected-host-id'), false)
     const state = JSON.parse(await readFile(registration.stateFile, 'utf8'))
     assert.equal(state.type, 'porta-product-lifecycle-private-product-operation')
 
@@ -325,17 +372,49 @@ test('private Product admission rejects local deployment intent before Bridge mu
   }
 })
 
-test('refuses Local Product Release before any mutation on an old Bridge runtime', async () => {
+test('refuses Local Product Release before any mutation on a Bridge without exact Host selection', async () => {
   const value = await fixture()
   try {
     const result = run(value, [
       'local-release-register', '--run-key', runKey, '--spec', value.specPath,
       '--package-root', value.packageRoot, '--provider', 'codex',
       '--provider-session-id', 'session_fixture_1234', '--cwd', value.project,
-    ], { FAKE_RUNTIME_VERSION: '1.16.4' })
+    ], { FAKE_RUNTIME_VERSION: '1.17.8' })
     assert.notEqual(result.status, 0)
     const calls = (await readFile(value.log, 'utf8')).trim().split('\n').map(JSON.parse)
     assert.deepEqual(calls.map((call) => call[1]), ['capabilities'])
+  } finally {
+    await value.cleanup()
+  }
+})
+
+test('rejects a different Porta Host for a retained Local Product Release Run', async () => {
+  const value = await fixture()
+  try {
+    const args = [
+      'local-release-register', '--run-key', runKey, '--spec', value.specPath,
+      '--package-root', value.packageRoot, '--provider', 'codex',
+      '--provider-session-id', 'session_fixture_1234', '--cwd', value.project,
+    ]
+    const registered = run(value, args)
+    assert.equal(registered.status, 0, registered.stderr)
+    const otherRoute = planLifecycleRoute({
+      explicitMutationIntent: true,
+      object: { kind: 'product', ref: 'product_current' },
+      outcome: 'deploy',
+      portaContext: 'trusted',
+      runKey,
+      schemaVersion: 1,
+      target: { kind: 'porta-local', ref: 'host_other_1234', source: 'trusted-runtime' },
+    })
+    const receiptPath = join(value.root, 'other-host-route.json')
+    await writeFile(receiptPath, JSON.stringify(otherRoute))
+    const rejected = run(value, [...args, '--route-receipt', receiptPath])
+    assert.notEqual(rejected.status, 0)
+    assert.equal(JSON.parse(rejected.stderr).code, 'local_release_operation_conflict')
+    const calls = (await readFile(value.log, 'utf8')).trim().split('\n').map(JSON.parse)
+    assert.equal(calls.filter((call) => call[1] === 'product-work-begin').length, 1)
+    assert.equal(calls.filter((call) => call[1] === 'product-materialization-register').length, 1)
   } finally {
     await value.cleanup()
   }

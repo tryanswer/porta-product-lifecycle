@@ -41,7 +41,7 @@ The App emits one JSON object with exactly these fields:
     "schemaVersion": 1,
     "target": {
       "kind": "porta-local",
-      "ref": "host_handoff_0123456789abcdef0123456789abcdef",
+      "ref": "host-opaque-id",
       "source": "trusted-runtime"
     }
   },
@@ -61,8 +61,10 @@ The Web publication form differs only in its route-owned values:
 - `route.target.kind` is `porta-web`;
 - `route.target.ref` starts with `porta_handoff_`.
 
-The local form requires `deploy`, `porta-local`, and a `host_handoff_` target
-ref. `handoffRef` is a deterministic non-security correlation value bound by
+The local form requires `deploy`, `porta-local`, and a target ref exactly equal
+to `binding.hostId`. This lets the route-gated client pass the already confirmed
+Host into Bridge Project Context selection instead of guessing from `cwd` when
+two connection profiles reach the same machine. `handoffRef` is a deterministic non-security correlation value bound by
 the App to the exact Preview, Host, terminal session, and selected target. It
 must match `handoff_[a-f0-9]{32}`. The Product and target refs must end in the
 same complete handoff ref. Missing, blank, unknown, mismatched, or extra fields
@@ -105,7 +107,8 @@ Expected settlement is exact:
 | Local/private Host | `deploy` + `porta-local` | `porta-product-lifecycle` / `local-product-release` | Bridge `local-ready`, target health, Porta access readback |
 | Porta cloud | `distribute` + `porta-web` | `porta-product-lifecycle` / `porta-web-release` | Bridge publication receipt, provider readback, public target observation |
 
-Any other owner, target kind/ref, outcome, Run policy, or disposition is a
+For a local handoff, a target ref different from `binding.hostId` is a route
+mismatch. Any other owner, target kind/ref, outcome, Run policy, or disposition is a
 route mismatch and authorizes no mutation.
 
 ## Supersession state machine

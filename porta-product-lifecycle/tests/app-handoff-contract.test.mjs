@@ -19,6 +19,8 @@ test('Lifecycle gives Porta App handoffs one exact pre-route contract', async ()
   assert.match(reference, /handoff_\[a-f0-9\]\{32\}/u)
   assert.match(reference, /copying these envelope route fields unchanged/u)
   assert.match(reference, /set `runKey` to the newly\s+allocated exact key/u)
+  assert.match(reference, /target ref exactly equal\s+to `binding\.hostId`/u)
+  assert.match(reference, /instead of guessing from `cwd`/u)
   assert.match(reference, /Any other owner, target kind\/ref, outcome, Run policy, or disposition/u)
 })
 

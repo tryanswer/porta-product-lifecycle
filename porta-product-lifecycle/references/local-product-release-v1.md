@@ -7,7 +7,7 @@ useful deployment input, but it is not Porta Local Product Release truth.
 
 ## Admission
 
-Bridge Runtime `1.16.6` or newer must advertise
+Bridge Runtime `1.17.9` or newer must advertise
 `porta.workflow.product-materialization.v1` and the exact non-publish Product
 Work, registration, and status operations. The client discovers the managed
 `~/.porta/bin/porta-bridge` launcher before PATH.
@@ -27,11 +27,17 @@ node <skill-directory>/scripts/porta-product-lifecycle.mjs local-release-registe
   --route-receipt <deploy-route-receipt.json>
 ```
 
+For a `porta-local` route, `target.ref` is the exact Porta Host selected by the
+App or user. The client binds that Host into its private recovery identity and
+passes it to both Bridge admissions; a different Host on retry fails before
+Product Work mutation. This disambiguates multiple connection profiles that
+reach the same filesystem root without deleting or guessing between contexts.
+
 The client re-verifies actual package bytes before mutation, writes one private
 recovery journal, begins a `purpose=materialization` Product Work, and obtains a
 `product-materialization-registration-receipt`. It reuses exact idempotency
 identities after response loss. Reusing the Run key with different Package,
-Project, Provider, or Session identity fails closed.
+Project, Host, Provider, or Session identity fails closed.
 
 This is not the publication `begin` command. It creates no publish intent, Web
 Release candidate, public URL, or Distribution.

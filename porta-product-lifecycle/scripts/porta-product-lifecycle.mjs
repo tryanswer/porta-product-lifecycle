@@ -36,9 +36,11 @@ import {
 } from './product-capability-negotiation.mjs'
 import { readAndPlanProductLifecycle } from './lifecycle-plan.mjs'
 import {
+  assertLifecycleRouteCommand,
   LifecycleRouteValidationError,
   readAndCheckLifecycleRoute,
   readAndPlanLifecycleRoute,
+  readLifecycleRouteReceipt,
 } from './lifecycle-route.mjs'
 
 const execFile = promisify(execFileCallback)
@@ -48,7 +50,7 @@ const RELEASE_WORKFLOW_PROTOCOL_VERSION = 2
 const MINIMUM_LEGACY_WORKFLOW_RUNTIME = '1.9.0'
 const MINIMUM_RELEASE_WORKFLOW_RUNTIME = '1.14.0'
 const MINIMUM_SCENE_PACK_READINESS_RUNTIME = '1.16.1'
-const MINIMUM_LOCAL_PRODUCT_RELEASE_RUNTIME = '1.16.6'
+const MINIMUM_LOCAL_PRODUCT_RELEASE_RUNTIME = '1.17.9'
 const MINIMUM_AGENT_ARTIFACT_RUNTIME = '1.17.8'
 const SKILL_ID = 'porta-product-lifecycle'
 const SKILL_VERSION = '1.1.0'
@@ -121,6 +123,7 @@ class ClientError extends Error {
 async function main() {
   const [command, ...rawTokens] = process.argv.slice(2)
   let tokens = rawTokens
+  let routeReceipt = null
   if (!command || command === '--help' || command === 'help') {
     process.stdout.write(helpText())
     return
@@ -173,7 +176,7 @@ async function main() {
     await publishAgentArtifact(tokens)
     return
   }
-  tokens = await authorizeLifecycleCommand(command, tokens)
+  ;({ receipt: routeReceipt, tokens } = await authorizeLifecycleCommand(command, tokens))
   if (command === 'package-validate') {
     const options = parseOptions(tokens, ['spec'])
     const result = await readProductPackage(options.spec)
@@ -233,7 +236,7 @@ async function main() {
     return
   }
   if (command === 'local-release-register') {
-    await registerLocalProductRelease(tokens)
+    await registerLocalProductRelease(tokens, routeReceipt)
     return
   }
   if (command === 'local-release-status') {
@@ -241,7 +244,7 @@ async function main() {
     return
   }
   if (command === 'private-product-register') {
-    await registerPrivateProduct(tokens)
+    await registerPrivateProduct(tokens, routeReceipt)
     return
   }
   if (command === 'private-product-status') {
@@ -282,7 +285,7 @@ async function main() {
 }
 
 async function authorizeLifecycleCommand(command, tokens) {
-  if (!routeGatedCommands.has(command)) return tokens
+  if (!routeGatedCommands.has(command)) return { receipt: null, tokens }
   let receiptPath
   const remaining = []
   for (let index = 0; index < tokens.length; index += 1) {
@@ -307,8 +310,9 @@ async function authorizeLifecycleCommand(command, tokens) {
   const runKey = runKeyIndex >= 0 && runKeyIndex + 1 < remaining.length
     ? remaining[runKeyIndex + 1]
     : null
-  await readAndCheckLifecycleRoute(receiptPath, command, runKey)
-  return remaining
+  const receipt = await readLifecycleRouteReceipt(receiptPath)
+  assertLifecycleRouteCommand(receipt, { command, runKey })
+  return { receipt, tokens: remaining }
 }
 
 function helpText() {
@@ -450,15 +454,15 @@ function validateAgentArtifactPublishReceipt(value, { intent, path, requestId, t
   }
 }
 
-async function registerLocalProductRelease(tokens) {
-  return registerProductMaterialization(tokens, 'local-release')
+async function registerLocalProductRelease(tokens, routeReceipt) {
+  return registerProductMaterialization(tokens, 'local-release', routeReceipt)
 }
 
-async function registerPrivateProduct(tokens) {
-  return registerProductMaterialization(tokens, 'private-product')
+async function registerPrivateProduct(tokens, routeReceipt) {
+  return registerProductMaterialization(tokens, 'private-product', routeReceipt)
 }
 
-async function registerProductMaterialization(tokens, operationKind) {
+async function registerProductMaterialization(tokens, operationKind, routeReceipt) {
   const options = parseOptions(tokens, [
     'cwd',
     'package-root',
@@ -468,6 +472,9 @@ async function registerProductMaterialization(tokens, operationKind) {
     'spec',
   ])
   const runKey = requireRunKey(options['run-key'])
+  const routeExpectedHostId = operationKind === 'local-release' && routeReceipt?.target.kind === 'porta-local'
+    ? requireOpaqueInput(routeReceipt.target.ref, 'Porta Host')
+    : undefined
   const cwd = await resolveProjectCwd(options.cwd)
   const provider = requireProvider(options.provider)
   const providerSessionId = requireOpaqueInput(options['provider-session-id'], 'Provider Session')
@@ -495,6 +502,12 @@ async function registerProductMaterialization(tokens, operationKind) {
   let state = await readOptionalProductMaterializationState(stateFile, operationKind)
   if (state) {
     requireSameLocalReleaseIdentity(state, identity)
+    if (state.expectedHostId !== undefined && state.expectedHostId !== routeExpectedHostId) {
+      throw new ClientError(
+        'local_release_operation_conflict',
+        'Run key is already bound to a different Local Product Release Host.',
+      )
+    }
     if (state.candidatePath !== candidatePath && state.registrationReceipt === null) {
       const legacyCandidatePath = `${stateFile}.candidate.json`
       if (state.candidatePath !== legacyCandidatePath) {
@@ -512,6 +525,7 @@ async function registerProductMaterialization(tokens, operationKind) {
     state = {
       ...identity,
       candidatePath,
+      ...(routeExpectedHostId ? { expectedHostId: routeExpectedHostId } : {}),
       registrationReceipt: null,
       type: `porta-product-lifecycle-${operationKind}-operation`,
       version: 1,
@@ -526,6 +540,7 @@ async function registerProductMaterialization(tokens, operationKind) {
   }
 
   if (!state.workReceipt) {
+    const expectedHostId = state.expectedHostId ?? routeExpectedHostId
     const traceId = `porta-${operationKind}-work:${randomUUID()}`
     const value = await runBridge([
       'workflow', 'product-work-begin',
@@ -534,15 +549,21 @@ async function registerProductMaterialization(tokens, operationKind) {
       '--provider', provider,
       '--provider-session-id', providerSessionId,
       '--purpose', 'materialization',
+      ...(expectedHostId ? ['--expected-host-id', expectedHostId] : []),
       '--idempotency-key', productMaterializationIdempotencyKey(state, operationKind, 'work'),
       '--trace-id', traceId,
       '--json',
     ])
-    state.workReceipt = normalizeLocalProductWorkReceipt(value, state, traceId)
+    state = {
+      ...state,
+      ...(expectedHostId ? { expectedHostId } : {}),
+      workReceipt: normalizeLocalProductWorkReceipt(value, state, traceId),
+    }
     await writeProductMaterializationState(stateFile, state, operationKind)
   }
 
   if (!state.registrationReceipt) {
+    const expectedHostId = state.expectedHostId ?? routeExpectedHostId
     const traceId = `porta-${operationKind}-register:${randomUUID()}`
     const payload = Buffer.from(JSON.stringify({
       candidatePath: state.candidatePath,
@@ -555,13 +576,18 @@ async function registerProductMaterialization(tokens, operationKind) {
       'workflow', 'product-materialization-register',
       '--workflow-protocol-version', '2',
       '--cwd', state.cwd,
+      ...(expectedHostId ? ['--expected-host-id', expectedHostId] : []),
       '--payload', payload,
       '--work-run-id', state.workReceipt.workRunId,
       '--idempotency-key', productMaterializationIdempotencyKey(state, operationKind, 'register'),
       '--trace-id', traceId,
       '--json',
     ])
-    state.registrationReceipt = normalizeLocalProductRegistrationReceipt(value, traceId)
+    state = {
+      ...state,
+      ...(expectedHostId ? { expectedHostId } : {}),
+      registrationReceipt: normalizeLocalProductRegistrationReceipt(value, traceId),
+    }
     await writeProductMaterializationState(stateFile, state, operationKind)
   }
 
@@ -815,12 +841,13 @@ async function writeProductMaterializationState(path, state, operationKind) {
 function validateProductMaterializationState(value, operationKind) {
   const state = requireExactRecord(value, [
     'artifactSha256', 'candidateDigest', 'candidatePath', 'cwd', 'packageDigest',
-    'packageRoot', 'provider', 'providerSessionId', 'registrationReceipt', 'runKey',
+    'expectedHostId', 'packageRoot', 'provider', 'providerSessionId', 'registrationReceipt', 'runKey',
     'specPath', 'type', 'version', 'workReceipt',
-  ], [], 'Product Materialization recovery state')
+  ], ['expectedHostId'], 'Product Materialization recovery state')
   if (state.type !== `porta-product-lifecycle-${operationKind}-operation` || state.version !== 1 ||
     !runKeyPattern.test(String(state.runKey ?? '')) || !providers.has(state.provider) ||
     !isWorkflowOpaqueRef(state.providerSessionId) ||
+    (state.expectedHostId !== undefined && !isWorkflowOpaqueRef(state.expectedHostId)) ||
     ![state.artifactSha256, state.candidateDigest, state.packageDigest].every((value) => /^[a-f0-9]{64}$/.test(String(value ?? ''))) ||
     ![state.candidatePath, state.cwd, state.packageRoot, state.specPath].every((value) => typeof value === 'string' && value.startsWith('/')) ||
     (state.workReceipt !== null && !isRecord(state.workReceipt)) ||
@@ -851,7 +878,7 @@ function requireSameLocalReleaseIdentity(state, identity) {
 function productMaterializationIdempotencyKey(state, operationKind, phase) {
   return `porta-${operationKind}-${phase}:${createHash('sha256').update([
     state.runKey, state.cwd, state.provider, state.providerSessionId,
-    state.packageDigest, phase,
+    state.packageDigest, ...(state.expectedHostId ? [state.expectedHostId] : []), phase,
   ].join('\0')).digest('hex')}`
 }
 

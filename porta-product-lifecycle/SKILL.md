@@ -204,7 +204,9 @@ external phase, execute through the settled owner, and independently read back
 runtime health. For Porta local release, keep the exact Run key through
 `local-release-register` and `local-release-status`; only Bridge `local-ready`
 plus target health and Porta access readback completes that route. A loopback
-URL or project-local receipt alone does not.
+URL or project-local receipt alone does not. When the route target is
+`porta-local`, keep its exact Host ref unchanged; the client binds it to Bridge
+Project Context admission so two profiles for one machine cannot be guessed.
 
 ### Distribute
 
