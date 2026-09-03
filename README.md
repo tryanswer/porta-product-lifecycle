@@ -15,7 +15,7 @@ start a WorkRun or authorize deployment or distribution.
 
 ## Install
 
-Use the immutable release `porta-product-lifecycle-v1.0.7`. A trusted Agent
+Use the immutable release `porta-product-lifecycle-v1.1.0`. A trusted Agent
 must resolve the annotated tag, compare its full commit SHA with Porta's
 catalog, and install the complete `porta-product-lifecycle/` subdirectory at
 user scope. Never install from a moving branch.
@@ -23,7 +23,7 @@ user scope. Never install from a moving branch.
 For manual inspection:
 
 ```bash
-git clone --branch porta-product-lifecycle-v1.0.7 --single-branch \
+git clone --branch porta-product-lifecycle-v1.1.0 --single-branch \
   https://github.com/tryanswer/porta-product-lifecycle.git
 cd porta-product-lifecycle
 git rev-parse HEAD
@@ -38,11 +38,10 @@ semver update of `porta-workflow`. Historical Workflow records remain
 readable through Porta's legacy adapter, while new runs and receipts use only
 `porta-product-lifecycle`.
 
-The main branch currently develops Lifecycle `1.1.0`, including deterministic
-route receipts and the independently discoverable
-`porta-agent-artifact-handoff` companion Skill. Until an immutable `1.1.0`
-release is tagged and verified, `1.0.7` remains the installable release; do not
-install the moving main branch as a user-level Skill.
+Lifecycle `1.1.0` adds deterministic route receipts, exact Porta Host binding
+for local releases, and the independently discoverable
+`porta-agent-artifact-handoff` companion Skill. Install only the immutable tag;
+do not install the moving main branch as a user-level Skill.
 
 ## Package and plan
 
