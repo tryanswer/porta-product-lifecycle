@@ -37,6 +37,7 @@ import {
 import { readAndPlanProductLifecycle } from './lifecycle-plan.mjs'
 import {
   assertLifecycleRouteCommand,
+  isPortaHostId,
   LifecycleRouteValidationError,
   readAndCheckLifecycleRoute,
   readAndPlanLifecycleRoute,
@@ -50,6 +51,7 @@ const RELEASE_WORKFLOW_PROTOCOL_VERSION = 2
 const MINIMUM_LEGACY_WORKFLOW_RUNTIME = '1.9.0'
 const MINIMUM_RELEASE_WORKFLOW_RUNTIME = '1.14.0'
 const MINIMUM_SCENE_PACK_READINESS_RUNTIME = '1.16.1'
+const MINIMUM_PRODUCT_MATERIALIZATION_RUNTIME = '1.16.6'
 const MINIMUM_LOCAL_PRODUCT_RELEASE_RUNTIME = '1.17.9'
 const MINIMUM_AGENT_ARTIFACT_RUNTIME = '1.17.8'
 const SKILL_ID = 'porta-product-lifecycle'
@@ -473,7 +475,7 @@ async function registerProductMaterialization(tokens, operationKind, routeReceip
   ])
   const runKey = requireRunKey(options['run-key'])
   const routeExpectedHostId = operationKind === 'local-release' && routeReceipt?.target.kind === 'porta-local'
-    ? requireOpaqueInput(routeReceipt.target.ref, 'Porta Host')
+    ? requirePortaHostId(routeReceipt.target.ref)
     : undefined
   const cwd = await resolveProjectCwd(options.cwd)
   const provider = requireProvider(options.provider)
@@ -484,7 +486,7 @@ async function registerProductMaterialization(tokens, operationKind, routeReceip
   const receipt = await verifyProductPackageRoot(descriptor.package, packageRoot)
   if (operationKind === 'local-release') requireLocalProductPackage(receipt.materializationCandidate)
   else requirePrivateProductPackage(receipt.materializationCandidate)
-  await requireLocalProductReleaseCapabilities()
+  await requireProductMaterializationCapabilities(operationKind)
 
   const stateFile = await productMaterializationStateFile(runKey, operationKind)
   const candidatePath = await productMaterializationCandidateFile(cwd, runKey, operationKind)
@@ -613,7 +615,7 @@ async function readPrivateProductStatus(tokens) {
 async function readProductMaterializationStatus(tokens, operationKind) {
   const options = parseOptions(tokens, ['run-key'])
   const runKey = requireRunKey(options['run-key'])
-  await requireLocalProductReleaseCapabilities()
+  await requireProductMaterializationCapabilities(operationKind)
   const stateFile = await productMaterializationStateFile(runKey, operationKind)
   const state = await readOptionalProductMaterializationState(stateFile, operationKind)
   if (!state?.registrationReceipt) {
@@ -645,8 +647,11 @@ async function readProductMaterializationStatus(tokens, operationKind) {
   })
 }
 
-async function requireLocalProductReleaseCapabilities() {
-  const traceId = `porta-local-release-capabilities:${randomUUID()}`
+async function requireProductMaterializationCapabilities(operationKind) {
+  const minimumRuntime = operationKind === 'local-release'
+    ? MINIMUM_LOCAL_PRODUCT_RELEASE_RUNTIME
+    : MINIMUM_PRODUCT_MATERIALIZATION_RUNTIME
+  const traceId = `porta-${operationKind}-capabilities:${randomUUID()}`
   const capabilities = await runBridge([
     'workflow', 'capabilities',
     '--workflow-protocol-version', '2',
@@ -662,14 +667,14 @@ async function requireLocalProductReleaseCapabilities() {
     capabilities.workflowProtocolVersion !== 2 || capabilities.eventContractVersion !== 2 ||
     capabilities.type !== 'workflow-capabilities' || capabilities.traceId !== traceId ||
     capabilities.platformSupported !== true ||
-    !isRuntimeAtLeast(capabilities.runtimeVersion, MINIMUM_LOCAL_PRODUCT_RELEASE_RUNTIME) ||
+    !isRuntimeAtLeast(capabilities.runtimeVersion, minimumRuntime) ||
     !Array.isArray(capabilities.capabilities) ||
     !capabilities.capabilities.includes('porta.workflow.product-materialization.v1') ||
     !Array.isArray(capabilities.commands) ||
     !requiredCommands.every((command) => capabilities.commands.includes(command))) {
     throw new ClientError(
-      'local_release_incompatible',
-      `Agent Bridge ${MINIMUM_LOCAL_PRODUCT_RELEASE_RUNTIME} with Product Materialization is required for Local Product Release.`,
+      `${operationKind.replaceAll('-', '_')}_incompatible`,
+      `Agent Bridge ${minimumRuntime} with Product Materialization is required for ${operationKind === 'local-release' ? 'Local Product Release' : 'Private Product'}.`,
     )
   }
   return capabilities
@@ -847,7 +852,7 @@ function validateProductMaterializationState(value, operationKind) {
   if (state.type !== `porta-product-lifecycle-${operationKind}-operation` || state.version !== 1 ||
     !runKeyPattern.test(String(state.runKey ?? '')) || !providers.has(state.provider) ||
     !isWorkflowOpaqueRef(state.providerSessionId) ||
-    (state.expectedHostId !== undefined && !isWorkflowOpaqueRef(state.expectedHostId)) ||
+    (state.expectedHostId !== undefined && !isPortaHostId(state.expectedHostId)) ||
     ![state.artifactSha256, state.candidateDigest, state.packageDigest].every((value) => /^[a-f0-9]{64}$/.test(String(value ?? ''))) ||
     ![state.candidatePath, state.cwd, state.packageRoot, state.specPath].every((value) => typeof value === 'string' && value.startsWith('/')) ||
     (state.workReceipt !== null && !isRecord(state.workReceipt)) ||
@@ -901,6 +906,14 @@ async function resolveExistingFile(value, label) {
 function requireOpaqueInput(value, label) {
   const normalized = String(value ?? '')
   if (!isWorkflowOpaqueRef(normalized)) throw new ClientError('invalid_arguments', `${label} is invalid.`)
+  return normalized
+}
+
+function requirePortaHostId(value) {
+  const normalized = String(value ?? '')
+  if (!isPortaHostId(normalized)) {
+    throw new ClientError('invalid_arguments', 'Porta Host is invalid.')
+  }
   return normalized
 }
 

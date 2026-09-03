@@ -315,6 +315,29 @@ test('route receipt digest rejects drift and binds a command to the exact Run', 
   )
 })
 
+test('porta-local routing preserves the full bounded Project Context Host identity', () => {
+  const hostId = `h${'x'.repeat(255)}`
+  const route = planLifecycleRoute(input({
+    outcome: 'deploy',
+    target: { kind: 'porta-local', ref: hostId, source: 'trusted-runtime' },
+    explicitMutationIntent: true,
+    runKey: 'run_77777777-7777-4777-8777-777777777777',
+  }))
+  assert.equal(route.target.ref, hostId)
+
+  for (const ref of [`${hostId}x`, ' host-current', 'host-current\n']) {
+    assert.throws(
+      () => planLifecycleRoute(input({
+        outcome: 'deploy',
+        target: { kind: 'porta-local', ref, source: 'trusted-runtime' },
+        explicitMutationIntent: true,
+        runKey: 'run_77777777-7777-4777-8777-777777777777',
+      })),
+      (error) => error instanceof LifecycleRouteValidationError && error.code === 'invalid_route_input',
+    )
+  }
+})
+
 function canonicalJson(value) {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
   if (value && typeof value === 'object') {

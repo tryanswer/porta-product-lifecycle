@@ -264,7 +264,9 @@ function normalizeTarget(value) {
   requireExactKeys(value, ['kind', 'ref', 'source'], 'route target')
   if (!targetKinds.has(value.kind)) fail('invalid_route_input', 'Route target kind is invalid.')
   if (!targetSources.has(value.source)) fail('invalid_route_input', 'Route target source is invalid.')
-  const ref = normalizeRef(value.ref, 'Route target ref')
+  const ref = value.kind === 'porta-local'
+    ? normalizePortaHostRef(value.ref)
+    : normalizeRef(value.ref, 'Route target ref')
   if (value.kind === 'none' && (ref !== null || value.source !== 'none')) {
     fail('invalid_route_input', 'A none target cannot carry a ref or authority source.')
   }
@@ -619,6 +621,22 @@ function normalizeRef(value, label) {
     fail('invalid_route_input', `${label} is invalid.`)
   }
   return value
+}
+
+function normalizePortaHostRef(value) {
+  if (value === null) return null
+  if (!isPortaHostId(value)) fail('invalid_route_input', 'Route target Host ref is invalid.')
+  return value
+}
+
+export function isPortaHostId(value) {
+  return typeof value === 'string' &&
+    value.length >= 1 && value.length <= 256 &&
+    value === value.trim().normalize('NFC') &&
+    ![...value].some((character) => {
+      const codePoint = character.codePointAt(0) ?? 0
+      return codePoint <= 31 || codePoint === 127
+    })
 }
 
 function requireRunKey(value, label) {

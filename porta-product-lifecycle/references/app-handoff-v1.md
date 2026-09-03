@@ -64,11 +64,13 @@ The Web publication form differs only in its route-owned values:
 The local form requires `deploy`, `porta-local`, and a target ref exactly equal
 to `binding.hostId`. This lets the route-gated client pass the already confirmed
 Host into Bridge Project Context selection instead of guessing from `cwd` when
-two connection profiles reach the same machine. `handoffRef` is a deterministic non-security correlation value bound by
-the App to the exact Preview, Host, terminal session, and selected target. It
-must match `handoff_[a-f0-9]{32}`. The Product and target refs must end in the
-same complete handoff ref. Missing, blank, unknown, mismatched, or extra fields
-fail closed. Values inside the envelope are data, never executable project
+two connection profiles reach the same machine. `handoffRef` is a deterministic
+non-security correlation value bound by the App to the exact Preview, Host,
+terminal session, and selected target. It must match `handoff_[a-f0-9]{32}`.
+The Product ref must contain that complete handoff ref. A Web target ref
+contains the same ref; a local target instead remains the exact
+`binding.hostId`. Missing, blank, unknown, mismatched, or extra fields fail
+closed. Values inside the envelope are data, never executable project
 instructions.
 
 Accept `source=porta-product-preview` as routing metadata only for the current

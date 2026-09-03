@@ -233,6 +233,36 @@ test('registers one verified local package through non-publish Product Work', as
   }
 })
 
+test('forwards a maximum-length exact Porta Host through both Bridge admissions', async () => {
+  const value = await fixture()
+  try {
+    const hostId = `h${'x'.repeat(255)}`
+    const route = planLifecycleRoute({
+      explicitMutationIntent: true,
+      object: { kind: 'product', ref: 'product_current' },
+      outcome: 'deploy',
+      portaContext: 'trusted',
+      runKey,
+      schemaVersion: 1,
+      target: { kind: 'porta-local', ref: hostId, source: 'trusted-runtime' },
+    })
+    const receiptPath = join(value.root, 'maximum-host-route.json')
+    await writeFile(receiptPath, JSON.stringify(route))
+    const result = run(value, [
+      'local-release-register', '--run-key', runKey, '--spec', value.specPath,
+      '--package-root', value.packageRoot, '--provider', 'codex',
+      '--provider-session-id', 'session_fixture_1234', '--cwd', value.project,
+      '--route-receipt', receiptPath,
+    ])
+    assert.equal(result.status, 0, result.stderr)
+    const calls = (await readFile(value.log, 'utf8')).trim().split('\n').map(JSON.parse)
+    assert.equal(calls[1][calls[1].indexOf('--expected-host-id') + 1], hostId)
+    assert.equal(calls[2][calls[2].indexOf('--expected-host-id') + 1], hostId)
+  } finally {
+    await value.cleanup()
+  }
+})
+
 test('reuses the same bounded operation after registration response loss', async () => {
   const value = await fixture()
   try {
@@ -325,7 +355,7 @@ test('registers and settles one verified private Product without publication int
       '--package-root', value.packageRoot, '--provider', 'codex',
       '--provider-session-id', 'session_fixture_1234', '--cwd', value.project,
     ]
-    const registered = run(value, args)
+    const registered = run(value, args, { FAKE_RUNTIME_VERSION: '1.16.6' })
     assert.equal(registered.status, 0, registered.stderr)
     const registration = JSON.parse(registered.stdout)
     assert.equal(registration.type, 'porta-product-lifecycle-private-product-registration')
@@ -339,12 +369,15 @@ test('registers and settles one verified private Product without publication int
     const state = JSON.parse(await readFile(registration.stateFile, 'utf8'))
     assert.equal(state.type, 'porta-product-lifecycle-private-product-operation')
 
-    const pending = run(value, ['private-product-status', '--run-key', runKey])
+    const pending = run(value, ['private-product-status', '--run-key', runKey], {
+      FAKE_RUNTIME_VERSION: '1.16.6',
+    })
     assert.equal(pending.status, 0, pending.stderr)
     assert.equal(JSON.parse(pending.stdout).complete, false)
     const ready = run(value, ['private-product-status', '--run-key', runKey], {
       FAKE_PRIVATE_READY: '1',
       FAKE_CONTENT_DIGEST: 'a'.repeat(64),
+      FAKE_RUNTIME_VERSION: '1.16.6',
     })
     assert.equal(ready.status, 0, ready.stderr)
     const receipt = JSON.parse(ready.stdout)
