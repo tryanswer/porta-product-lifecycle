@@ -7,7 +7,7 @@ useful deployment input, but it is not Porta Local Product Release truth.
 
 ## Admission
 
-Bridge Runtime `1.17.9` or newer must advertise
+Bridge Runtime `1.18.0` or newer must advertise
 `porta.workflow.product-materialization.v1` and the exact non-publish Product
 Work, registration, and status operations. The client discovers the managed
 `~/.porta/bin/porta-bridge` launcher before PATH.
@@ -38,6 +38,14 @@ recovery journal, begins a `purpose=materialization` Product Work, and obtains a
 `product-materialization-registration-receipt`. It reuses exact idempotency
 identities after response loss. Reusing the Run key with different Package,
 Project, Host, Provider, or Session identity fails closed.
+
+Product Package schema remains v1 or v2. The verifier emits Materialization
+Candidate v3 with an ordered `artifactReceipts` closure for every declared
+artifact. This includes supplemental runtime inputs such as a Web directory
+next to a primary executable. Bridge copies and rechecks that complete closure;
+it does not infer runtime completeness from `primaryArtifact` alone. Runtime
+1.18.0 can derive the same bounded closure for an already registered legacy
+candidate so recovery does not require deleting its WorkRun or request.
 
 This is not the publication `begin` command. It creates no publish intent, Web
 Release candidate, public URL, or Distribution.
@@ -72,6 +80,13 @@ The phone must use Porta's read-only presentation flow: Bridge returns the exact
 endpoint, Porta creates an SSH local-forward, probes the forwarded URL, and
 opens ProductPreviewBrowserView. The Mac's `127.0.0.1` is never a phone URL and
 never a shareable Distribution link.
+
+Preview and release have different update semantics. A Preview may retain a
+development server port and HMR/WebSocket session. Local Product Release is an
+immutable target: Bridge makes the replacement ready before retiring the prior
+target, and the App reopens the exact active target through its remembered
+phone-loopback port. Do not promise an already open release will hot-switch in
+place.
 
 `local-ready` proves Porta can reconcile and present the exact release; it does
 not prove that the user opened it on a particular phone. Physical-device

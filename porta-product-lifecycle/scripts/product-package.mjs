@@ -4,6 +4,7 @@ import { lstat, open, readdir, readFile } from 'node:fs/promises'
 import { isAbsolute, join, posix, resolve, sep } from 'node:path'
 
 const MAX_SPEC_BYTES = 256 * 1024
+const MAX_MATERIALIZATION_CANDIDATE_BYTES = 1024 * 1024
 const MAX_PACKAGE_FILES = 4096
 const MAX_PACKAGE_BYTES = 512 * 1024 * 1024
 const MAX_PRESENTATION_BYTES = 512 * 1024
@@ -185,19 +186,29 @@ export async function verifyProductPackageRoot(value, packageRoot) {
     fail('package_tree_changed', 'Package tree changed during verification.')
   }
 
+  const materializationCandidate = {
+    artifactReceipts: receipts,
+    package: validated.package,
+    packageDigest: validated.digest,
+    primaryArtifact,
+    ...(validated.package.schemaVersion === 2 ? {
+      presentationAssets: await materializePresentationAssets(validated.package, receipts, root),
+    } : {}),
+    schemaVersion: validated.package.schemaVersion,
+    type: 'porta-product-materialization-candidate',
+    version: 3,
+  }
+  if (Buffer.byteLength(`${JSON.stringify(materializationCandidate, null, 2)}\n`) >
+    MAX_MATERIALIZATION_CANDIDATE_BYTES) {
+    fail(
+      'oversized_materialization_candidate',
+      'Verified Materialization Candidate exceeds the 1 MiB transport limit.',
+    )
+  }
+
   return {
     artifacts: receipts,
-    materializationCandidate: {
-      package: validated.package,
-      packageDigest: validated.digest,
-      primaryArtifact,
-      ...(validated.package.schemaVersion === 2 ? {
-        presentationAssets: await materializePresentationAssets(validated.package, receipts, root),
-      } : {}),
-      schemaVersion: validated.package.schemaVersion,
-      type: 'porta-product-materialization-candidate',
-      version: validated.package.schemaVersion,
-    },
+    materializationCandidate,
     packageDigest: validated.digest,
     packageSchemaVersion: validated.package.schemaVersion,
     type: 'porta-product-package-verification',

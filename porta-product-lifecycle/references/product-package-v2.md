@@ -49,11 +49,12 @@ bounded variants without changing aspect ratio.
 ## Verification and transport
 
 `package-verify` re-reads every presentation file as a singly linked regular
-file, verifies its declared bytes, SHA-256, and PNG/JPEG/WebP byte signature,
-and emits candidate version 2.
-The candidate carries only the bounded verified card variants, their media
-types, roles, paths, byte counts, and digests. Bridge and App must verify the
-same package and asset identities before retaining or rendering them.
+file and verifies its declared bytes, SHA-256, and PNG/JPEG/WebP byte signature.
+Product Package remains schema version 2 while the independent Materialization
+Candidate is version 3. That candidate carries the complete ordered artifact
+receipt closure plus the bounded verified card variants, their media types,
+roles, paths, byte counts, and digests. Bridge and App must verify the same
+package, closure, and asset identities before retaining or rendering them.
 
 Unknown fields, undeclared files, overlapping artifact paths, unsupported media
 types, duplicate roles, digest drift, oversized variants, and a missing v2 Logo

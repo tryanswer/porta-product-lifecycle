@@ -9,7 +9,7 @@ but this command does not execute that deployment.
 
 ## Admission
 
-Bridge Runtime `1.16.6` or newer must advertise the additive Product
+Bridge Runtime `1.18.0` or newer must advertise the additive Product
 Materialization and non-publish Product Work operations. Create and retain one
 Run key, settle a `materialize-private` route for that same key, then register
 the exact verified package with its unchanged route receipt:

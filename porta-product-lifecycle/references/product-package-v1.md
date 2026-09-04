@@ -6,6 +6,18 @@ actual bytes are identified, what validation was observed, and which optional
 deployment/distribution decisions the user declared. It is not a build system,
 runtime attestation, deployment receipt, or distribution receipt.
 
+The Package schema version is independent from its transport snapshot. Current
+`package-verify` output emits Materialization Candidate v3 for either Package
+schema v1 or v2. Candidate v3 repeats the verified receipt for every declared
+artifact in canonical declaration order and retains `primaryArtifact` as an
+exact value projection of one receipt; JSON object-key order is not identity.
+Consumers must use the complete
+closure when materializing a runtime; the primary artifact alone does not prove
+that supplemental runtime inputs were delivered. The serialized candidate is
+limited to 1 MiB, including receipt manifests and any bounded presentation
+variants; verification fails before registration when that aggregate is too
+large.
+
 ## Exact descriptor
 
 Unknown fields fail closed. The top-level JSON object contains:

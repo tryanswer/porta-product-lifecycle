@@ -82,7 +82,7 @@ if (command === 'capabilities') {
       'product-materialization-status'
     ],
     eventContractVersion: 2, ok: true, platformSupported: true, protocolVersion: 1,
-    runtimeVersion: process.env.FAKE_RUNTIME_VERSION || '1.17.9', staleAfterSeconds: 900,
+    runtimeVersion: process.env.FAKE_RUNTIME_VERSION || '1.18.0', staleAfterSeconds: 900,
     traceId: option('--trace-id'), type: 'workflow-capabilities', workflowProtocolVersion: 2
   }))
   process.exit(0)
@@ -355,7 +355,7 @@ test('registers and settles one verified private Product without publication int
       '--package-root', value.packageRoot, '--provider', 'codex',
       '--provider-session-id', 'session_fixture_1234', '--cwd', value.project,
     ]
-    const registered = run(value, args, { FAKE_RUNTIME_VERSION: '1.16.6' })
+    const registered = run(value, args, { FAKE_RUNTIME_VERSION: '1.18.0' })
     assert.equal(registered.status, 0, registered.stderr)
     const registration = JSON.parse(registered.stdout)
     assert.equal(registration.type, 'porta-product-lifecycle-private-product-registration')
@@ -370,14 +370,14 @@ test('registers and settles one verified private Product without publication int
     assert.equal(state.type, 'porta-product-lifecycle-private-product-operation')
 
     const pending = run(value, ['private-product-status', '--run-key', runKey], {
-      FAKE_RUNTIME_VERSION: '1.16.6',
+      FAKE_RUNTIME_VERSION: '1.18.0',
     })
     assert.equal(pending.status, 0, pending.stderr)
     assert.equal(JSON.parse(pending.stdout).complete, false)
     const ready = run(value, ['private-product-status', '--run-key', runKey], {
       FAKE_PRIVATE_READY: '1',
       FAKE_CONTENT_DIGEST: 'a'.repeat(64),
-      FAKE_RUNTIME_VERSION: '1.16.6',
+      FAKE_RUNTIME_VERSION: '1.18.0',
     })
     assert.equal(ready.status, 0, ready.stderr)
     const receipt = JSON.parse(ready.stdout)
@@ -412,7 +412,7 @@ test('refuses Local Product Release before any mutation on a Bridge without exac
       'local-release-register', '--run-key', runKey, '--spec', value.specPath,
       '--package-root', value.packageRoot, '--provider', 'codex',
       '--provider-session-id', 'session_fixture_1234', '--cwd', value.project,
-    ], { FAKE_RUNTIME_VERSION: '1.17.8' })
+    ], { FAKE_RUNTIME_VERSION: '1.17.9' })
     assert.notEqual(result.status, 0)
     const calls = (await readFile(value.log, 'utf8')).trim().split('\n').map(JSON.parse)
     assert.deepEqual(calls.map((call) => call[1]), ['capabilities'])

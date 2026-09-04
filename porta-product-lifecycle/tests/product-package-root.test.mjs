@@ -66,12 +66,13 @@ test('verifies actual regular-file bytes and exact static-directory tree digest'
     assert.deepEqual(receipt.artifacts[0].files.map((file) => file.path), ['assets/app.js', 'index.html'])
     assert.match(receipt.packageDigest, /^[a-f0-9]{64}$/)
     assert.deepEqual(receipt.materializationCandidate, {
+      artifactReceipts: receipt.artifacts,
       package: specForDirectory(value.files),
       packageDigest: receipt.packageDigest,
       primaryArtifact: receipt.artifacts[0],
       schemaVersion: 1,
       type: 'porta-product-materialization-candidate',
-      version: 1,
+      version: 3,
     })
   } finally {
     await value.cleanup()
@@ -242,7 +243,7 @@ test('Product Package v2 emits digest-bound card assets in the candidate', async
       validation: { checks: [{ evidenceRef: 'build:presentation', id: 'check_build', kind: 'build', observedAt: '2026-08-27T00:00:00.000Z', status: 'passed' }] },
     }
     const receipt = await verifyProductPackageRoot(spec, root)
-    assert.equal(receipt.materializationCandidate.version, 2)
+    assert.equal(receipt.materializationCandidate.version, 3)
     assert.deepEqual(receipt.materializationCandidate.presentationAssets, [
       { bytes: logo.length, contentBase64: logo.toString('base64'), mediaType: 'image/png', path: 'presentation/logo.png', role: 'logo', sha256: sha(logo) },
       { bytes: cover.length, contentBase64: cover.toString('base64'), mediaType: 'image/webp', path: 'presentation/cover.webp', role: 'cover', sha256: sha(cover) },
